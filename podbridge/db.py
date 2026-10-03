@@ -43,11 +43,20 @@ def migrate(conn: sqlite3.Connection) -> int:
         if version <= current:
             continue
         sql = path.read_text(encoding="utf-8")
+        # SQLite's table-rebuild procedure: foreign keys off (outside the transaction) so
+        # DROP TABLE doesn't cascade, then verify integrity before committing.
+        conn.execute("PRAGMA foreign_keys = OFF")
         try:
-            conn.executescript(f"BEGIN;\n{sql}\nPRAGMA user_version = {version};\nCOMMIT;")
+            conn.executescript(f"BEGIN;\n{sql}\nPRAGMA user_version = {version};")
+            problems = conn.execute("PRAGMA foreign_key_check").fetchall()
+            if problems:
+                raise sqlite3.IntegrityError(f"Migration {path.name} broke {len(problems)} foreign key(s)")
+            conn.execute("COMMIT")
         except sqlite3.Error:
             conn.rollback()
             raise
+        finally:
+            conn.execute("PRAGMA foreign_keys = ON")
         log.info("Applied migration %s", path.name)
         current = version
     return current

@@ -6,14 +6,15 @@
 <section class="card table-card">
   <div class="table-wrap">
     <table>
-      <thead><tr><th>Label</th><th>Campaign</th><th>Covers</th><th class="num">Episodes</th><th class="num">Matched</th><th>Pocket Casts podcast</th><th></th></tr></thead>
+      <thead><tr><th>Label</th><th>Campaign / channel</th><th>Covers</th><th class="num">Episodes</th><th class="num">Matched</th><th>Pocket Casts podcast</th><th></th></tr></thead>
       <tbody>
       {% for s in sources %}
         <tr {% if not s.enabled %}class="disabled"{% endif %}>
           <td>{{ s.label }}</td>
           <td class="mono">{{ s.campaign_id }}</td>
           <td class="nowrap">
-            {% if s.collection_id %}<span class="mono">Collection {{ s.collection_id }}</span>
+            {% if s.kind == 'youtube' %}YouTube channel
+            {% elif s.collection_id %}<span class="mono">Collection {{ s.collection_id }}</span>
               <form method="post" action="{{ url_for('main.widen_source_route', source_id=s.id) }}" class="inline-form">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <button type="submit" class="link accent" title="Include every post in this campaign, keeping existing matches">Widen to all posts</button>
@@ -23,7 +24,7 @@
           <td class="num">{{ s.episode_count }}</td>
           <td class="num">{{ s.matched_count }}</td>
           <td class="nowrap">
-            {% if s.pocketcasts_podcast_uuid %}<span class="mono">{{ s.pocketcasts_podcast_uuid[:8] }}…</span>
+            {% if s.pocketcasts_podcast_uuid %}Linked ·
               <a href="{{ url_for('main.link_source_form', source_id=s.id) }}">Change</a>
             {% else %}<a href="{{ url_for('main.link_source_form', source_id=s.id) }}">Link podcast</a>{% endif %}
           </td>
@@ -41,7 +42,21 @@
 </section>
 
 <section class="card">
-  <h2>Add a source</h2>
+  <h2>Add a YouTube channel</h2>
+  <form method="post" action="{{ url_for('main.add_youtube_source') }}" class="row">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="field grow">
+      <label for="channel">Channel handle or URL</label>
+      <input id="channel" name="channel" type="text" placeholder="@TheNewsAgents" required>
+    </div>
+    <button type="submit" class="secondary">Add channel</button>
+  </form>
+  <p class="muted">Uses your YouTube watch history (cookies in Settings). Positions come from the red progress bar, so they're
+    accurate to about 1%. If the podcast has inserted ads, its timeline may not line up exactly with the video.</p>
+</section>
+
+<section class="card">
+  <h2>Add a Patreon source</h2>
   <form method="get" class="row">
     <div class="field grow">
       <label for="campaign_id">Patreon campaign ID</label>

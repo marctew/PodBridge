@@ -8,7 +8,7 @@ import sqlite3
 from dataclasses import dataclass, field
 
 from .db import utcnow
-from .matching import PatreonSide, PocketSide, match_episodes
+from .matching import PatreonSide, PocketSide, match_episodes, match_episodes_loose
 from .pocketcasts import STATUS_UNPLAYED, EpisodeState, PocketCastsClient
 from .settings_store import SettingsStore
 
@@ -107,7 +107,8 @@ def auto_match_source(conn: sqlite3.Connection, source: sqlite3.Row) -> int:
     taken = {r[0] for r in conn.execute(
         "SELECT e.pocketcasts_episode_uuid FROM episodes e JOIN sources s ON s.id = e.source_id "
         "WHERE e.pocketcasts_episode_uuid IS NOT NULL AND s.enabled = 1")}
-    matches = match_episodes(pending, pocket, taken)
+    matcher = match_episodes_loose if source["kind"] == "youtube" else match_episodes
+    matches = matcher(pending, pocket, taken)
     for episode_id, (uuid, method) in matches.items():
         conn.execute(
             "UPDATE episodes SET pocketcasts_episode_uuid = ?, match_method = ?, updated_at = ? WHERE id = ?",

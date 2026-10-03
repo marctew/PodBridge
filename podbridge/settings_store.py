@@ -17,6 +17,7 @@ SECRET_KEYS = frozenset({
     "pocketcasts_password",
     "pocketcasts_refresh_token",
     "alert_webhook_url",
+    "youtube_cookies",
 })
 
 DEFAULTS = {

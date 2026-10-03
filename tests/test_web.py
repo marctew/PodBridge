@@ -20,6 +20,7 @@ def test_healthz_is_public_and_reveals_nothing(client):
     assert response.status_code == 200
     assert response.get_json() == {
         "status": "ok", "patreon_session_valid": None, "pocketcasts_session_valid": None,
+        "youtube_session_valid": None,
     }
 
 

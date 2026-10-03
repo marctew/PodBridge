@@ -4,7 +4,8 @@
 <p><a href="{{ url_for('main.sources') }}">← Sources</a></p>
 <h1>Link {{ source.label }}</h1>
 <section class="card">
-  <p class="muted">Pick the Pocket Casts podcast that carries this collection. Private Patreon feeds are listed first.
+  <p class="muted">Pick the Pocket Casts podcast that carries this {{ 'channel' if source.kind == 'youtube' else 'collection' }}.
+    {{ 'Closest names are listed first.' if source.kind == 'youtube' else 'Private Patreon feeds are listed first.' }}
     Changing the podcast clears this source's existing matches.</p>
   {% if podcasts %}
   <form method="post">

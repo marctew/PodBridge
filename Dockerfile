@@ -13,6 +13,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY podbridge ./podbridge
+COPY scripts/probe_youtube.py ./scripts/probe_youtube.py
 COPY wsgi.py .
 
 USER podbridge

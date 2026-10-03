@@ -9,6 +9,28 @@ Syncs playback progress from Patreon into Pocket Casts, so a bonus episode watch
 - automatic and manual episode matching
 - the sync engine with dry run, the scheduler, **Sync now** (which restarts the countdown), and the Activity page
 
+## YouTube channels (experimental)
+
+A YouTube channel can be a source too, for example `@TheNewsAgents` linked to its podcast in Pocket Casts.
+
+**How it works:**
+- PodBridge reads your YouTube watch history (the red progress bar), so positions are accurate to about 1%.
+- Video titles and lengths differ from the podcast's, so it matches on publish date (within 30 hours), using title similarity as a tiebreak.
+- If the podcast has inserted ads, its timeline may not line up exactly with the video.
+
+**Setup:**
+1. Open a private window, sign in to YouTube, and export youtube.com cookies as `cookies.txt`. Close the window without signing out.
+2. Paste the cookies into Settings → YouTube and click **Save & test**.
+3. On the Sources page, use **Add a YouTube channel**, then **Link podcast**.
+
+**To check the parsing works on your history first** (read-only):
+
+```bash
+docker compose exec -e YOUTUBE_COOKIES_FILE=/tmp/cookies.txt podbridge python scripts/probe_youtube.py @TheNewsAgents
+```
+
+Copy the file into the container first, with `docker compose cp`.
+
 Dry run is on by default. Turn it off in Settings once the Activity log looks right. Next is Phase 4a (resume links) and Phase 5 (alerts and polish).
 
 ## Deploy (Docker Compose)

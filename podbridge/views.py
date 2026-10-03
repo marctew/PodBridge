@@ -19,10 +19,15 @@ from .linking import (
 )
 from .patreon import PatreonBlocked, PatreonError, PatreonSessionExpired
 from .pocketcasts import PocketCastsAuthError, PocketCastsBlocked, PocketCastsError
+from .matching import title_similarity
 from .resume import TIMESTAMP_PARAM_PATTERN, build_resume_url, last_touched, resume_position
 from .scheduler import next_run_at, restart_countdown, run_sync_now, scheduler_running
 from .sync import SyncBusy
-from .services import NotConfigured, patreon_client, pocketcasts_client, pocketcasts_configured, pocketcasts_tokens
+from .services import (
+    NotConfigured, patreon_client, pocketcasts_client, pocketcasts_configured, pocketcasts_tokens, youtube_client,
+)
+from .discovery import check_youtube_session, discover_youtube_all, has_sources
+from .youtube import YouTubeBlocked, YouTubeError, YouTubeSessionExpired
 from .settings_store import MAX_INTERVAL_MINUTES, MIN_INTERVAL_MINUTES, SettingsStore, get_store
 
 bp = Blueprint("main", __name__)
@@ -34,16 +39,19 @@ SECRET_FIELDS = {
     "patreon_session_id": "patreon",
     "pocketcasts_email": "pocketcasts",
     "pocketcasts_password": "pocketcasts",
+    "youtube_cookies": "youtube",
     "alert_webhook_url": None,
 }
 
 SERVICE_SECRETS = {
     "patreon": ("patreon_session_id",),
     "pocketcasts": ("pocketcasts_email", "pocketcasts_password"),
+    "youtube": ("youtube_cookies",),
 }
 
 PATREON_FAILURES = (NotConfigured, SecretError, PatreonError, TransportError)
 POCKETCASTS_FAILURES = (NotConfigured, SecretError, PocketCastsError, TransportError)
+YOUTUBE_FAILURES = (NotConfigured, SecretError, YouTubeError, TransportError)
 
 
 def connection_status(store: SettingsStore, service: str) -> dict:
@@ -97,10 +105,25 @@ def pocketcasts_failure(store: SettingsStore, exc: Exception) -> str:
     return f"Pocket Casts problem: {exc}"
 
 
+def youtube_failure(store: SettingsStore, exc: Exception) -> str:
+    if isinstance(exc, NotConfigured):
+        return str(exc)
+    if isinstance(exc, SecretError):
+        return "Stored YouTube cookies can't be decrypted (was ENCRYPTION_KEY changed?). Paste them again."
+    if isinstance(exc, YouTubeSessionExpired):
+        store.set("youtube_status", "expired")
+        store.set("youtube_verified_at", utcnow())
+        return f"YouTube login has expired: {exc}. Export fresh cookies and paste them in Settings."
+    if isinstance(exc, YouTubeBlocked):
+        return f"{exc}: YouTube is pushing back, so try again later."
+    store.set("youtube_status", "error")
+    return f"YouTube problem: {exc}"
+
+
 # --- resume links ---
 
 EPISODE_QUERY = (
-    "SELECT e.*, s.pocketcasts_podcast_uuid, s.enabled AS source_enabled, "
+    "SELECT e.*, s.pocketcasts_podcast_uuid, s.enabled AS source_enabled, s.kind AS source_kind, "
     "p.patreon_position_secs, p.patreon_is_watched, p.patreon_watch_state, p.patreon_updated_at, "
     "p.pocketcasts_position_secs, p.pocketcasts_status, p.pocketcasts_changed_at, p.last_synced_at "
     "FROM episodes e JOIN sources s ON s.id = e.source_id LEFT JOIN progress p ON p.episode_id = e.id"
@@ -110,9 +133,11 @@ EPISODE_QUERY = (
 def annotate(row, param: str) -> dict:
     """Row -> dict with resume position, Continue-on-Patreon URL and last-touched time."""
     ep = dict(row)
+    youtube = ep.get("source_kind") == "youtube"
+    ep["source_name"] = "YouTube" if youtube else "Patreon"
     ep["resume"] = resume_position(ep["patreon_position_secs"], bool(ep["patreon_is_watched"]),
                                    ep["duration_secs"], ep["pocketcasts_status"], ep["pocketcasts_position_secs"])
-    ep["resume_url"] = (build_resume_url(ep["patreon_url"], ep["resume"].position_secs, param)
+    ep["resume_url"] = (build_resume_url(ep["patreon_url"], ep["resume"].position_secs, "t" if youtube else param)
                         if ep["resume"] and ep["patreon_url"] else None)
     ep["touched"] = last_touched(ep["patreon_updated_at"], ep["pocketcasts_changed_at"])
     return ep
@@ -201,6 +226,7 @@ def dashboard():
         "dashboard.html",
         patreon=connection_status(store, "patreon"),
         pocketcasts=connection_status(store, "pocketcasts"),
+        youtube=connection_status(store, "youtube"),
         dry_run=store.get_bool("dry_run"),
         interval=store.get_int("sync_interval_minutes"),
         last_run=last_run,
@@ -266,6 +292,8 @@ def settings():
             run_patreon_test(store)
         elif action == "test_pocketcasts":
             run_pocketcasts_test(store)
+        elif action == "test_youtube":
+            run_youtube_test(store)
         return redirect(url_for("main.settings"))
 
     webhook_host = None
@@ -278,6 +306,7 @@ def settings():
         webhook_host=webhook_host,
         patreon=connection_status(store, "patreon"),
         pocketcasts=connection_status(store, "pocketcasts"),
+        youtube=connection_status(store, "youtube"),
         interval=store.get_int("sync_interval_minutes"),
         dry_run=store.get_bool("dry_run"),
         timestamp_param=store.get("patreon_timestamp_param"),
@@ -359,6 +388,18 @@ def run_pocketcasts_test(store: SettingsStore) -> None:
     flash("Pocket Casts login works.", "ok")
 
 
+def run_youtube_test(store: SettingsStore) -> None:
+    try:
+        ok = check_youtube_session(store, youtube_client(store))
+    except YOUTUBE_FAILURES as exc:
+        flash(youtube_failure(store, exc), "error")
+        return
+    if ok:
+        flash("YouTube cookies are signed in.", "ok")
+    else:
+        flash("YouTube cookies aren't signed in. Export them again from a fresh private window.", "error")
+
+
 # --- episodes ---
 
 EPISODE_FILTERS = {
@@ -386,15 +427,22 @@ def episodes():
 
 @bp.post("/episodes/refresh")
 def refresh_episodes():
-    """Patreon discovery, then Pocket Casts catalogue + auto-matching."""
+    """Patreon and YouTube discovery, then Pocket Casts catalogue + auto-matching."""
     store = get_store()
     db = get_db()
-    try:
-        for r in discover_all(db, store, patreon_client(store)):
-            flash(f"Patreon · {r.label}: {r.posts_seen} posts, {r.added} new"
-                  + (f", {r.skipped_no_media} without media skipped" if r.skipped_no_media else ""), "ok")
-    except PATREON_FAILURES as exc:
-        flash(patreon_failure(store, exc), "error")
+    if has_sources(db, "patreon"):
+        try:
+            for r in discover_all(db, store, patreon_client(store)):
+                flash(f"Patreon · {r.label}: {r.posts_seen} posts, {r.added} new"
+                      + (f", {r.skipped_no_media} without media skipped" if r.skipped_no_media else ""), "ok")
+        except PATREON_FAILURES as exc:
+            flash(patreon_failure(store, exc), "error")
+    if has_sources(db, "youtube"):
+        try:
+            for r in discover_youtube_all(db, store, youtube_client(store)):
+                flash(f"YouTube · {r.label}: {r.posts_seen} watched videos in recent history, {r.added} new", "ok")
+        except YOUTUBE_FAILURES as exc:
+            flash(youtube_failure(store, exc), "error")
 
     linked = db.execute("SELECT COUNT(*) FROM sources WHERE enabled = 1 "
                         "AND pocketcasts_podcast_uuid IS NOT NULL").fetchone()[0]
@@ -523,6 +571,33 @@ def toggle_source(source_id: int):
     return redirect(url_for("main.sources"))
 
 
+@bp.post("/sources/youtube")
+def add_youtube_source():
+    handle = request.form.get("channel", "").strip()
+    if not handle:
+        flash("Enter a channel handle (like @TheNewsAgents) or channel URL.", "error")
+        return redirect(url_for("main.sources"))
+    store = get_store()
+    try:
+        channel = youtube_client(store).resolve_channel(handle)
+    except YOUTUBE_FAILURES as exc:
+        flash(youtube_failure(store, exc), "error")
+        return redirect(url_for("main.sources"))
+    if channel is None:
+        flash(f"Couldn't find a YouTube channel for “{handle}”.", "error")
+        return redirect(url_for("main.sources"))
+    db = get_db()
+    with db:
+        cur = db.execute(
+            "INSERT INTO sources (label, campaign_id, collection_id, kind) VALUES (?, ?, '', 'youtube') "
+            "ON CONFLICT (campaign_id, collection_id) DO NOTHING", (f"YouTube: {channel.title}", channel.channel_id))
+    if cur.rowcount:
+        flash(f"Added YouTube: {channel.title}. Now link it to its Pocket Casts podcast.", "ok")
+    else:
+        flash("That channel is already a source.", "warn")
+    return redirect(url_for("main.sources"))
+
+
 @bp.post("/sources/<int:source_id>/widen")
 def widen_source_route(source_id: int):
     db = get_db()
@@ -550,8 +625,13 @@ def link_source_form(source_id: int):
     except POCKETCASTS_FAILURES as exc:
         flash(pocketcasts_failure(store, exc), "error")
         return redirect(url_for("main.sources"))
-    # Private Patreon feeds first: that's almost always the right target.
-    podcasts.sort(key=lambda p: (p.feed_host != "www.patreon.com", p.title.casefold()))
+    if source["kind"] == "youtube":
+        # Closest title to the channel name first.
+        channel = source["label"].removeprefix("YouTube: ")
+        podcasts.sort(key=lambda p: (-title_similarity(channel, p.title), p.title.casefold()))
+    else:
+        # Private Patreon feeds first: that's almost always the right target.
+        podcasts.sort(key=lambda p: (p.feed_host != "www.patreon.com", p.title.casefold()))
     return render_template("link_source.html", source=source, podcasts=podcasts)
 
 
@@ -583,4 +663,4 @@ def healthz():
         return {"ok": True, "expired": False, "error": False}.get(state)
 
     return jsonify(status="ok", patreon_session_valid=valid("patreon"),
-                   pocketcasts_session_valid=valid("pocketcasts"))
+                   pocketcasts_session_valid=valid("pocketcasts"), youtube_session_valid=valid("youtube"))

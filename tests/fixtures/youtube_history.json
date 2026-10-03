@@ -1,0 +1,35 @@
+{
+  "contents": {"twoColumnBrowseResultsRenderer": {"tabs": [{"tabRenderer": {"content": {"sectionListRenderer": {"contents": [
+    {"itemSectionRenderer": {"contents": [
+      {"videoRenderer": {
+        "videoId": "NewsAgent01",
+        "title": {"runs": [{"text": "Is this the end for the PM? | The News Agents"}]},
+        "lengthText": {"simpleText": "41:30"},
+        "ownerText": {"runs": [{"text": "The News Agents"}]},
+        "thumbnailOverlays": [
+          {"thumbnailOverlayResumePlaybackRenderer": {"percentDurationWatched": 50}},
+          {"thumbnailOverlayTimeStatusRenderer": {"text": {"simpleText": "41:30"}}}
+        ]
+      }},
+      {"lockupViewModel": {
+        "contentId": "NewsAgent02",
+        "contentType": "LOCKUP_CONTENT_TYPE_VIDEO",
+        "metadata": {"lockupMetadataViewModel": {"title": {"content": "Trump's tariffs explained"}}},
+        "contentImage": {"thumbnailViewModel": {"overlays": [
+          {"thumbnailBottomOverlayViewModel": {
+            "progressBar": {"thumbnailOverlayProgressBarViewModel": {"startPercent": 100}},
+            "badges": [{"thumbnailBadgeViewModel": {"text": "38:00"}}]
+          }}
+        ]}}
+      }},
+      {"videoRenderer": {
+        "videoId": "OtherChan03",
+        "title": {"simpleText": "Cat video"},
+        "thumbnailOverlays": [{"thumbnailOverlayResumePlaybackRenderer": {"percentDurationWatched": 30}}]
+      }},
+      {"videoRenderer": {"videoId": "NoProgres04", "title": {"simpleText": "Never opened"}}},
+      {"lockupViewModel": {"contentId": "PLplaylist", "contentType": "LOCKUP_CONTENT_TYPE_PLAYLIST"}},
+      {"videoRenderer": {"videoId": "NewsAgent01", "title": {"simpleText": "duplicate entry"}}}
+    ]}}
+  ]}}}}]}}
+}

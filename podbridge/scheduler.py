@@ -16,7 +16,8 @@ from flask import Flask, current_app
 
 from .crypto import SecretError
 from .db import get_db
-from .services import NotConfigured, patreon_client, pocketcasts_client
+from .services import NotConfigured, patreon_client, pocketcasts_client, youtube_client
+from .youtube import YouTubeError
 from .settings_store import get_store
 from .sync import RunSummary, SyncBusy, run_sync
 
@@ -27,9 +28,19 @@ JOB_ID = "sync"
 
 def run_sync_now(tier: str) -> RunSummary:
     """Build clients from stored credentials and run a sync. Needs an app context.
-    Raises NotConfigured, SecretError or SyncBusy."""
+    Pocket Casts is required (raises NotConfigured); a missing or unusable Patreon or
+    YouTube login only affects that kind's sources. Raises SecretError or SyncBusy too."""
     store = get_store()
-    return run_sync(get_db(), store, patreon_client(store), pocketcasts_client(store), tier)
+    pocketcasts = pocketcasts_client(store)
+    clients: dict[str, object] = {}
+    unavailable: dict[str, str] = {}
+    for kind, build in (("patreon", patreon_client), ("youtube", youtube_client)):
+        try:
+            clients[kind] = build(store)
+        except (NotConfigured, SecretError, YouTubeError) as exc:
+            unavailable[kind] = str(exc)
+    return run_sync(get_db(), store, clients.get("patreon"), pocketcasts, tier,
+                    youtube=clients.get("youtube"), unavailable=unavailable)
 
 
 def _scheduled_job(app: Flask) -> None:

@@ -15,7 +15,7 @@
   {% endfor %}
 </nav>
 
-{% set method_labels = {'auto_title': 'Title', 'auto_duration': 'Date + length', 'manual': 'Manual'} %}
+{% set method_labels = {'auto_title': 'Title', 'auto_duration': 'Date + length', 'auto_date': 'Date', 'manual': 'Manual'} %}
 {% for source in sources %}
   {% set rows = by_source.get(source.id, []) %}
   <section class="card table-card">
@@ -27,7 +27,7 @@
     <div class="table-wrap">
       <table>
         <thead>
-          <tr><th>Title</th><th>Published</th><th class="num">Length</th><th>Patreon</th><th>Pocket Casts</th><th>Match</th></tr>
+          <tr><th>Title</th><th>Published</th><th class="num">Length</th><th>{{ 'YouTube' if source.kind == 'youtube' else 'Patreon' }}</th><th>Pocket Casts</th><th>Match</th></tr>
         </thead>
         <tbody>
         {% for e in rows %}
@@ -36,7 +36,7 @@
               {% if e.patreon_url %}<a href="{{ e.patreon_url }}" target="_blank" rel="noopener">{{ e.title }}</a>{% else %}{{ e.title }}{% endif %}
               {% if e.resume_url and e.resume.position_secs > 0 %}
                 <a class="resume" href="{{ url_for('main.go_episode', episode_id=e.id) }}" target="_blank" rel="noopener"
-                   title="Opens Patreon at the further of the two positions">Continue on Patreon at {{ e.resume.position_secs | hms }}</a>
+                   title="Opens {{ e.source_name }} at the further of the two positions">Continue on {{ e.source_name }} at {{ e.resume.position_secs | hms }}</a>
               {% endif %}
             </td>
             <td class="nowrap">{{ e.published_at | localtime(date_only=True) }}</td>

@@ -7,6 +7,7 @@ from flask import current_app
 from .patreon import HttpPatreonClient, PatreonClient
 from .pocketcasts import HttpPocketCastsClient, PocketCastsClient, TokenCache
 from .settings_store import SettingsStore
+from .youtube import HttpYouTubeClient, YouTubeClient
 
 
 class NotConfigured(RuntimeError):
@@ -44,6 +45,18 @@ def _default_pocketcasts_factory(store: SettingsStore) -> PocketCastsClient:
 
 def pocketcasts_client(store: SettingsStore) -> PocketCastsClient:
     factory = current_app.extensions.get("pocketcasts_client_factory", _default_pocketcasts_factory)
+    return factory(store)
+
+
+def _default_youtube_factory(store: SettingsStore) -> YouTubeClient:
+    cookies = store.get_secret("youtube_cookies")
+    if not cookies:
+        raise NotConfigured("YouTube cookies are not set. Add them in Settings.")
+    return HttpYouTubeClient(cookies, on_cookies_changed=lambda text: store.set_secret("youtube_cookies", text))
+
+
+def youtube_client(store: SettingsStore) -> YouTubeClient:
+    factory = current_app.extensions.get("youtube_client_factory", _default_youtube_factory)
     return factory(store)
 
 

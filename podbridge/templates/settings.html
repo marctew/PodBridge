@@ -37,6 +37,24 @@
   </section>
 
   <section class="card">
+    <h2>YouTube {{ status_badge(youtube) }}</h2>
+    <div class="field">
+      <label for="youtube_cookies">cookies.txt</label>
+      <textarea id="youtube_cookies" name="youtube_cookies" rows="4" autocomplete="off" spellcheck="false"
+                placeholder="{{ 'Set: leave blank to keep' if secrets_state['youtube_cookies'] else 'Paste the contents of a cookies.txt export for youtube.com' }}"></textarea>
+      <div class="field-meta">
+        {% if secrets_state['youtube_cookies'] %}
+          <span class="muted">Set {{ secrets_state['youtube_cookies'] | localtime }}</span>
+          <label class="inline"><input type="checkbox" name="clear_youtube_cookies" value="1"> Clear</label>
+        {% endif %}
+        <span class="muted">Only needed for YouTube channel sources. Export from a private window, then close it without signing out.
+          Cookies YouTube refreshes are saved automatically.</span>
+      </div>
+    </div>
+    <button type="submit" name="action" value="test_youtube" class="secondary">Save &amp; test</button>
+  </section>
+
+  <section class="card">
     <h2>Sync</h2>
     <div class="field">
       <label for="sync_interval_minutes">Interval (minutes)</label>

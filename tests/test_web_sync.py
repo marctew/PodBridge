@@ -36,7 +36,14 @@ def test_sync_now_runs_and_shows_in_activity(app, authed):
 
 def test_sync_now_without_credentials(authed):
     html = post(authed, "/sync").get_data(as_text=True)
-    assert "Patreon session cookie is not set" in html
+    assert "Pocket Casts email and password are not set" in html
+
+
+def test_missing_patreon_login_only_fails_patreon(app, authed):
+    use_pc(app, fake_pocketcasts())
+    configure_pc(authed)  # Pocket Casts set up, Patreon not
+    html = post(authed, "/sync").get_data(as_text=True)
+    assert "Sync error: Patreon: Patreon session cookie is not set" in html
 
 
 @pytest.fixture

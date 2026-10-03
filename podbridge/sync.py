@@ -1,12 +1,13 @@
-"""The sync engine: Patreon -> Pocket Casts, one full sweep per run.
+"""The sync engine: Patreon / YouTube -> Pocket Casts, one full sweep per run.
 
 Order per run:
-  1. Patreon session check + discovery (aborts the run if the session is dead).
+  1. Per source kind (Patreon, YouTube): session check + discovery. A dead
+     session skips that kind only and marks the run aborted.
   2. Pocket Casts catalogue + user state + auto-matching (fresh state every run).
-  3. Per matched episode: interpret Patreon progress, apply the rules, write
+  3. Per matched episode: interpret source progress, apply the rules, write
      (unless dry run) and record a sync_event.
 
-Episodes whose Patreon progress hasn't changed since the last decision are
+Episodes whose source progress hasn't changed since the last decision are
 counted but get no event, to keep the log readable at 96 runs a day.
 """
 
@@ -19,13 +20,14 @@ from dataclasses import dataclass, field
 
 from .crypto import SecretError
 from .db import utcnow
-from .discovery import discover_all
+from .discovery import discover_all, discover_youtube_all, has_sources
 from .http import TransportError
 from .linking import refresh_all
 from .patreon import PatreonClient, PatreonError, PatreonSessionExpired
 from .pocketcasts import PocketCastsClient, PocketCastsError
 from .rules import decide, interpret_patreon
 from .settings_store import SettingsStore
+from .youtube import YouTubeClient, YouTubeError, YouTubeSessionExpired
 
 log = logging.getLogger(__name__)
 
@@ -56,17 +58,41 @@ def _hms(secs: float | None) -> str:
     return f"{h}:{m:02}:{s:02}" if h else f"{m}:{s:02}"
 
 
-def run_sync(conn: sqlite3.Connection, store: SettingsStore, patreon: PatreonClient,
-             pocketcasts: PocketCastsClient, tier: str) -> RunSummary:
+def run_sync(conn: sqlite3.Connection, store: SettingsStore, patreon: PatreonClient | None,
+             pocketcasts: PocketCastsClient, tier: str, youtube: YouTubeClient | None = None,
+             unavailable: dict[str, str] | None = None) -> RunSummary:
+    """`unavailable` maps a source kind to why its client couldn't be built (e.g. not configured)."""
     if not _lock.acquire(blocking=False):
         raise SyncBusy("A sync is already running")
     try:
-        return _run(conn, store, patreon, pocketcasts, tier)
+        return _run(conn, store, patreon, youtube, pocketcasts, tier, unavailable or {})
     finally:
         _lock.release()
 
 
-def _run(conn, store, patreon, pocketcasts, tier) -> RunSummary:
+def _discover(conn, store, kind: str, client, unavailable: dict[str, str]) -> tuple[str, str] | None:
+    """Discovery for one source kind. Returns (status, message) on failure, None on success or no sources.
+    Each kind fails independently: a dead YouTube login doesn't stop Patreon, and vice versa."""
+    if not has_sources(conn, kind):
+        return None
+    label = {"patreon": "Patreon", "youtube": "YouTube"}[kind]
+    if client is None:
+        return "error", f"{label}: {unavailable.get(kind, 'not configured')}"
+    try:
+        if kind == "patreon":
+            discover_all(conn, store, client)
+        else:
+            discover_youtube_all(conn, store, client)
+    except (PatreonSessionExpired, YouTubeSessionExpired) as exc:
+        store.set(f"{kind}_status", "expired")
+        store.set(f"{kind}_verified_at", utcnow())
+        return "aborted", f"{label} session expired: {exc}"
+    except (PatreonError, YouTubeError, TransportError, SecretError) as exc:
+        return "error", f"{label}: {type(exc).__name__}: {exc}"
+    return None
+
+
+def _run(conn, store, patreon, youtube, pocketcasts, tier, unavailable) -> RunSummary:
     dry_run = store.get_bool("dry_run")
     with conn:
         run_id = conn.execute(
@@ -74,20 +100,26 @@ def _run(conn, store, patreon, pocketcasts, tier) -> RunSummary:
             (utcnow(), tier, int(dry_run)),
         ).lastrowid
     summary = RunSummary(run_id=run_id, status="running", dry_run=dry_run)
+    failures: list[tuple[str, str]] = []
     try:
-        discover_all(conn, store, patreon)
+        for kind, client in (("patreon", patreon), ("youtube", youtube)):
+            failure = _discover(conn, store, kind, client, unavailable)
+            if failure:
+                failures.append(failure)
+        # Episodes whose source failed this run keep their old progress, which the
+        # "unchanged since last decision" rule skips, so processing is still safe.
         refresh_all(conn, store, pocketcasts)
         _process(conn, run_id, pocketcasts, dry_run, summary)
-        summary.status = "ok"
-    except PatreonSessionExpired as exc:
-        store.set("patreon_status", "expired")
-        store.set("patreon_verified_at", utcnow())
-        summary.status, summary.error = "aborted", f"Patreon session expired: {exc}"
-    except (PatreonError, PocketCastsError, TransportError, SecretError) as exc:
-        summary.status, summary.error = "error", f"{type(exc).__name__}: {exc}"
+    except (PocketCastsError, TransportError, SecretError) as exc:
+        failures.append(("error", f"Pocket Casts: {type(exc).__name__}: {exc}"))
     except Exception as exc:  # noqa: BLE001 - record and keep the scheduler alive
         log.exception("Sync run %s crashed", run_id)
-        summary.status, summary.error = "error", f"Unexpected {type(exc).__name__}"
+        failures.append(("error", f"Unexpected {type(exc).__name__}"))
+    if not failures:
+        summary.status = "ok"
+    else:
+        summary.status = "aborted" if all(s == "aborted" for s, _ in failures) else "error"
+        summary.error = " · ".join(message for _, message in failures)
     with conn:
         conn.execute(
             "UPDATE sync_runs SET finished_at = ?, status = ?, episodes_checked = ?, episodes_updated = ?, "
@@ -112,7 +144,7 @@ def _mark_decided(conn, episode_id: int, patreon_updated_at: str) -> None:
 
 def _process(conn, run_id: int, pocketcasts: PocketCastsClient, dry_run: bool, summary: RunSummary) -> None:
     rows = conn.execute(
-        "SELECT e.id, e.title, e.duration_secs, e.pocketcasts_episode_uuid, s.pocketcasts_podcast_uuid, "
+        "SELECT e.id, e.title, e.duration_secs, e.pocketcasts_episode_uuid, s.pocketcasts_podcast_uuid, s.kind, "
         "pe.duration_secs AS pc_duration, p.patreon_position_secs, p.patreon_is_watched, p.patreon_updated_at, "
         "p.pocketcasts_status, p.pocketcasts_position_secs, p.synced_patreon_updated_at "
         "FROM episodes e JOIN sources s ON s.id = e.source_id "
@@ -127,15 +159,19 @@ def _process(conn, run_id: int, pocketcasts: PocketCastsClient, dry_run: bool, s
         if row["patreon_updated_at"] == row["synced_patreon_updated_at"]:
             continue  # unchanged since last decision (spec rule 2)
         episode_id = row["id"]
+        src = "YouTube" if row["kind"] == "youtube" else "Patreon"
         if not row["pocketcasts_episode_uuid"] or not row["pocketcasts_podcast_uuid"]:
             with conn:
                 _event(conn, run_id, episode_id, "no_match",
-                       f"Patreon at {_hms(row['patreon_position_secs'])} but no Pocket Casts match", summary)
+                       f"{src} at {_hms(row['patreon_position_secs'])} but no Pocket Casts match", summary)
                 _mark_decided(conn, episode_id, row["patreon_updated_at"])
             continue
 
+        # "Near the end" is judged on the source's own length; writes use the Pocket Casts length
+        # (a YouTube video and the podcast audio can differ in length).
         duration = row["pc_duration"] or row["duration_secs"]
-        playback = interpret_patreon(row["patreon_position_secs"], bool(row["patreon_is_watched"]), duration)
+        playback = interpret_patreon(row["patreon_position_secs"], bool(row["patreon_is_watched"]),
+                                     row["duration_secs"] or duration)
         decision = decide(playback, row["pocketcasts_status"], row["pocketcasts_position_secs"], duration)
         if decision is None:
             with conn:
@@ -146,9 +182,10 @@ def _process(conn, run_id: int, pocketcasts: PocketCastsClient, dry_run: bool, s
         if decision.action == "skipped_played":
             detail = "Already played in Pocket Casts; left alone"
         elif decision.action == "skipped_behind":
-            detail = f"Patreon {_hms(playback.position_secs)} isn't ahead of Pocket Casts {pc_pos} by 15 s+"
+            detail = f"{src} {_hms(playback.position_secs)} isn't ahead of Pocket Casts {pc_pos} by 15 s+"
         elif decision.action == "mark_played":
-            detail = f"{prefix}mark played (Patreon at {_hms(playback.position_secs)} of {_hms(duration)})"
+            detail = (f"{prefix}mark played ({src} at {_hms(playback.position_secs)} "
+                      f"of {_hms(row['duration_secs'] or duration)})")
         else:
             detail = f"{prefix}set position {pc_pos} → {_hms(decision.position)}"
 
