@@ -51,9 +51,13 @@
             </td>
             <td class="nowrap" data-label="Pocket Casts">
               {% if e.match_method == 'none' %}<span class="muted">–</span>
-              {% elif e.pocketcasts_status == 3 %}<span class="badge badge-ok">Played</span>
-              {% elif e.pocketcasts_status == 2 %}<span class="badge badge-progress">{{ e.pocketcasts_position_secs | hms }}</span>
-              {% else %}<span class="muted">Not started</span>{% endif %}
+              {% else %}
+                <a class="pc-link" href="{{ e.pc_web_url }}" target="_blank" rel="noopener" data-direct="{{ e.pc_app_url }}"
+                   title="Open in Pocket Casts">
+                {% if e.pocketcasts_status == 3 %}<span class="badge badge-ok">Played</span>
+                {% elif e.pocketcasts_status == 2 %}<span class="badge badge-progress">{{ e.pocketcasts_position_secs | hms }}</span>
+                {% else %}<span class="muted">Not started</span>{% endif %} ↗</a>
+              {% endif %}
             </td>
             <td class="nowrap" data-label="Match">
               {% if source.pocketcasts_podcast_uuid %}

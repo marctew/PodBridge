@@ -55,7 +55,9 @@
       if (!ios) return;
       document.documentElement.classList.add("ios");
       document.querySelectorAll("a[data-direct]").forEach(function (a) {
-        if (a.dataset.direct) a.href = a.dataset.direct;
+        if (!a.dataset.direct) return;
+        a.href = a.dataset.direct;  // YouTube/Patreon at the resume point, or a pca.st link for Pocket Casts
+        a.removeAttribute("target");
       });
       document.querySelectorAll('a[href^="https://www.youtube.com/"], a[href^="https://www.patreon.com/"]')
         .forEach(function (a) { a.removeAttribute("target"); });

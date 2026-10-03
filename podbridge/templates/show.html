@@ -50,6 +50,9 @@
           {% elif e.patreon_url %}
             <a href="{{ e.patreon_url }}" target="_blank" rel="noopener">Open on {{ e.source_name }}</a>
           {% endif %}
+          {% if e.pc_web_url %}
+            <a href="{{ e.pc_web_url }}" target="_blank" rel="noopener" data-direct="{{ e.pc_app_url }}">Open in Pocket Casts</a>
+          {% endif %}
           <a class="match-link" href="{{ url_for('main.match_episode', episode_id=e.id, next=request.full_path.rstrip('?')) }}">
             {% if e.match_method != 'none' %}Pocket Casts: {{ method_labels[e.match_method] }} match
             {% elif e.match_locked %}No Pocket Casts match{% else %}<span class="warn-text">Unmatched</span>{% endif %}</a>

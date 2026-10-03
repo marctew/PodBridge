@@ -39,7 +39,26 @@ def annotate(row, param: str) -> dict:
     else:
         ep["state"], ep["progress_pct"] = "unwatched", 0.0
     ep["thumb_key"] = f"{'yt' if youtube else 'patreon'}:{ep['patreon_post_id']}"
+    ep["pc_web_url"], ep["pc_app_url"] = pocketcasts_links(
+        ep.get("matched_podcast_uuid"), ep.get("pocketcasts_episode_uuid"),
+        ep["resume"].position_secs if ep["resume"] else None)
     return ep
+
+
+def pocketcasts_links(podcast_uuid: str | None, episode_uuid: str | None,
+                      position_secs: float | None) -> tuple[str | None, str | None]:
+    """(web player URL, share link) for a matched episode.
+
+    The web player is the only way to open a specific episode on Windows (the desktop app's
+    pktc:// links can't). The pca.st share link is a universal link that opens the iOS app,
+    at `t` seconds if given."""
+    if not (podcast_uuid and episode_uuid):
+        return None, None
+    web = f"https://pocketcasts.com/podcasts/{podcast_uuid}/{episode_uuid}"
+    app = f"https://pca.st/episode/{episode_uuid}"
+    if position_secs and position_secs >= 1:
+        app += f"?t={int(position_secs)}"
+    return web, app
 
 
 @dataclass

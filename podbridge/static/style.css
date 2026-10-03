@@ -242,6 +242,8 @@ input[type=search] {
 .table-card > p[hidden] { display: none; }
 .backfill { margin: .25rem 0 .75rem; align-items: center; }
 .flash-inline.bad { color: var(--bad); font-size: .875rem; }
+a.pc-link { color: var(--muted); text-decoration: none; white-space: nowrap; }
+a.pc-link:hover { color: var(--text); }
 td .inline-form { margin-top: .15rem; }
 
 /* ---------- Navigation icons (shown in the phone tab bar) ---------- */

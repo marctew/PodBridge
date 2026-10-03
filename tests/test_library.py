@@ -124,6 +124,23 @@ def test_library_and_show_page(app, authed):
     assert authed.get("/library/1/nope").status_code == 404
 
 
+def test_pocketcasts_links():
+    from podbridge.library import pocketcasts_links
+    assert pocketcasts_links("pod-1", "ep-1", 1200.7) == (
+        "https://pocketcasts.com/podcasts/pod-1/ep-1", "https://pca.st/episode/ep-1?t=1200")
+    assert pocketcasts_links("pod-1", "ep-1", None)[1] == "https://pca.st/episode/ep-1"
+    assert pocketcasts_links(None, "ep-1", 5) == (None, None)
+
+
+def test_open_in_pocketcasts_links_on_pages(app, authed):
+    setup_library(app, authed)
+    show = authed.get("/library/1/pc-podcast-bb").get_data(as_text=True)
+    assert 'href="https://pocketcasts.com/podcasts/pc-podcast-bb/pc-ep-peep"' in show
+    assert 'data-direct="https://pca.st/episode/pc-ep-peep?t=1200"' in show  # Pocket Casts is ahead at 20:00
+    matching = authed.get("/episodes").get_data(as_text=True)
+    assert "https://pocketcasts.com/podcasts/pc-podcast-bb/pc-ep-dad" in matching
+
+
 def test_home_shelves(app, authed):
     setup_library(app, authed)
     home = authed.get("/").get_data(as_text=True)
