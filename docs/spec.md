@@ -202,6 +202,11 @@ When the Patreon session check fails, or Pocket Casts login fails, or three cons
 - Show a banner on every page.
 - POST a small JSON payload to an optional webhook URL (I'll point it at Home Assistant or ntfy). One alert per state change, not one per run.
 
+*Amended 2026-10-03:* banner only, no webhook or notifications (Patreon and Pocket Casts already notify Marc).
+- The banner covers expired or failing Patreon, Pocket Casts and YouTube logins, plus three failed syncs in a row that aren't just an expired login.
+- It links straight to the fix and clears itself once things work again.
+- See `podbridge/alerts.py`.
+
 ## 9a. Resume links (the reverse direction, without writing to Patreon)
 
 Patreon post URLs accept a timestamp parameter that starts the video at a given point (I confirmed this in the browser). That gives a safe way to carry progress from Pocket Casts back to Patreon: PodBridge never changes Patreon's stored position, it just builds a link that opens the video where I actually am.

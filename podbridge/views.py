@@ -6,7 +6,11 @@ import logging
 from datetime import datetime
 from urllib.parse import urlparse
 
-from flask import Blueprint, abort, flash, jsonify, redirect, render_template, request, send_file, url_for
+from flask import (
+    Blueprint, abort, flash, jsonify, redirect, render_template, request, send_file, session, url_for,
+)
+
+from .alerts import current_problems
 
 from .auth import safe_next
 from .crypto import SecretError
@@ -48,7 +52,6 @@ SECRET_FIELDS = {
     "pocketcasts_email": "pocketcasts",
     "pocketcasts_password": "pocketcasts",
     "youtube_cookies": "youtube",
-    "alert_webhook_url": None,
 }
 
 SERVICE_SECRETS = {
@@ -130,6 +133,23 @@ def youtube_failure(store: SettingsStore, exc: Exception) -> str:
 
 
 # --- resume links ---
+
+@bp.app_context_processor
+def inject_problems():
+    """Banner problems for every signed-in page."""
+    if not session.get("auth"):
+        return {}
+    try:
+        found = current_problems(get_db(), get_store())
+    except SecretError:
+        found = []
+    banners = []
+    for p in found:
+        page, _, anchor = p.target.partition("#")
+        link = url_for("main.settings", _anchor=anchor or None) if page == "settings" else url_for("main.activity")
+        banners.append({"text": p.text, "since": p.since, "action": p.action, "link": link})
+    return {"problems": banners}
+
 
 def shows() -> list[library.Show]:
     return library.build_shows(get_db(), get_store().get("patreon_timestamp_param"))
@@ -322,14 +342,10 @@ def settings():
             run_youtube_test(store)
         return redirect(url_for("main.settings"))
 
-    webhook_host = None
-    if store.is_set("alert_webhook_url"):
-        webhook_host = urlparse(store.get_secret("alert_webhook_url") or "").hostname
     secrets_state = {key: store.updated_at(key) for key in SECRET_FIELDS}
     return render_template(
         "settings.html",
         secrets_state=secrets_state,
-        webhook_host=webhook_host,
         patreon=connection_status(store, "patreon"),
         pocketcasts=connection_status(store, "pocketcasts"),
         youtube=connection_status(store, "youtube"),
@@ -375,9 +391,6 @@ def save_settings(store: SettingsStore, form) -> list[str]:
             continue  # blank means "leave unchanged"
         if key == "patreon_session_id":
             value = normalise_patreon_cookie(value)
-        if key == "alert_webhook_url" and urlparse(value).scheme not in ("http", "https"):
-            errors.append("Alert webhook must be an http(s) URL.")
-            continue
         store.set_secret(key, value)
         if service:
             changed.add(service)

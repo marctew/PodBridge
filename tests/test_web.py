@@ -93,9 +93,8 @@ def test_interval_validation_and_dry_run_toggle(authed, app):
         assert store.get_bool("dry_run") is False
 
 
-def test_webhook_must_be_http(authed):
-    html = save(authed, alert_webhook_url="javascript:alert(1)").get_data(as_text=True)
-    assert "http(s) URL" in html
+def test_settings_have_no_webhook_field(authed):
+    assert "alert_webhook_url" not in authed.get("/settings").get_data(as_text=True)
 
 
 def test_stylesheet_url_is_versioned(client):

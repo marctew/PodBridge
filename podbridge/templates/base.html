@@ -37,6 +37,17 @@
     </form>
   </header>
   {% endif %}
+  {% if problems %}
+  <div class="problems" role="alert">
+    {% for p in problems %}
+      <p>
+        <span class="problem-icon" aria-hidden="true">⚠</span>
+        <span>{{ p.text }}{% if p.since %} <span class="problem-since">Since {{ p.since | localtime }}.</span>{% endif %}</span>
+        <a href="{{ p.link }}">{{ p.action }} →</a>
+      </p>
+    {% endfor %}
+  </div>
+  {% endif %}
   <main>
     {% with messages = get_flashed_messages(with_categories=true) %}
       {% for category, message in messages %}

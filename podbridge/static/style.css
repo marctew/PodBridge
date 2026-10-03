@@ -242,6 +242,20 @@ input[type=search] {
 .table-card > p[hidden] { display: none; }
 .backfill { margin: .25rem 0 .75rem; align-items: center; }
 .flash-inline.bad { color: var(--bad); font-size: .875rem; }
+/* Problem banner: shown on every page while something needs fixing */
+.problems { background: rgba(248, 81, 73, .12); border-bottom: 1px solid rgba(248, 81, 73, .45); }
+.problems p {
+  max-width: 1280px; margin: 0 auto; padding: .6rem 1rem; display: flex; gap: .6rem;
+  align-items: baseline; flex-wrap: wrap; font-size: .92rem;
+}
+.problems p + p { border-top: 1px solid rgba(248, 81, 73, .25); }
+.problem-icon { color: var(--bad); flex: none; }
+.problems p > span:nth-child(2) { flex: 1 1 0; min-width: 12rem; }  /* keeps the icon beside the text */
+.problem-since { color: var(--muted); }
+.problems a { margin-left: auto; color: var(--text); font-weight: 600; white-space: nowrap; }
+/* Fragment links land below the top bar rather than under it */
+section[id] { scroll-margin-top: 1rem; }
+
 /* "Open with…" sheet */
 /* Spelled out in full (position, margins, sizing) rather than relying on each browser's
    built-in dialog styles, which differ: Safari's are a black box with a white border. */

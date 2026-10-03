@@ -22,21 +22,21 @@
 <form method="post" class="stack">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
-  <section class="card">
+  <section class="card" id="patreon">
     <h2>Patreon {{ status_badge(patreon) }}</h2>
     {{ secret_field("patreon_session_id", "session_id cookie",
                     hint="From patreon.com: DevTools → Application → Cookies → session_id. Pasting “session_id=…” is fine.") }}
     <button type="submit" name="action" value="test_patreon" class="secondary">Save &amp; test</button>
   </section>
 
-  <section class="card">
+  <section class="card" id="pocketcasts">
     <h2>Pocket Casts {{ status_badge(pocketcasts) }}</h2>
     {{ secret_field("pocketcasts_email", "Email", type="email") }}
     {{ secret_field("pocketcasts_password", "Password", autocomplete="new-password") }}
     <button type="submit" name="action" value="test_pocketcasts" class="secondary">Save &amp; test</button>
   </section>
 
-  <section class="card">
+  <section class="card" id="youtube">
     <h2>YouTube {{ status_badge(youtube) }}</h2>
     <div class="field">
       <label for="youtube_cookies">cookies.txt</label>
@@ -87,12 +87,6 @@
              autocomplete="off" spellcheck="false">
       <div class="field-meta"><span class="muted">“Continue on Patreon” links add <code>?{{ timestamp_param }}=&lt;seconds&gt;</code> to the post URL.</span></div>
     </div>
-  </section>
-
-  <section class="card">
-    <h2>Alerts</h2>
-    {{ secret_field("alert_webhook_url", "Webhook URL (Home Assistant, ntfy…)", type="url",
-                    hint=("Currently posts to " ~ webhook_host) if webhook_host else None) }}
   </section>
 
   <p class="muted">Credentials are encrypted at rest and never shown again.</p>
