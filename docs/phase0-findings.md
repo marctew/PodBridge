@@ -27,11 +27,25 @@ Collection size: 64 posts, so a full sweep is 2 requests at `page[size]=50` with
 | Refresh | `POST /user/token` with `grant_type=refresh_token` works and returns a new refresh token, so the stored one rotates. |
 | Subscriptions | JSON `POST /user/podcast/list` `{v:1}` works, with `title`, `author` and `url` included. Button Boys is found. |
 | Episode state | `POST /user/podcast/episodes` returns **only episodes that have user state** (1 here), with no titles. Field types: `playedUpTo` and `duration` are ints. |
-| Episode metadata | **Gap.** `cache.pocketcasts.com/mobile/podcast/full/{uuid}` returned 200 with no podcast or episodes for the private feed. |
+| Private feed | There is exactly one Button Boys subscription. Its feed host is `www.patreon.com`. |
+| Episode metadata | Works. `GET https://cache.pocketcasts.com/mobile/podcast/full/{uuid}` returns the full private feed: **140 episodes**, each with `uuid`, `title`, `published` and `duration`. It includes the episode that has user state. The responses are **gzip-compressed** even when the client doesn't ask for gzip; the first probe failed because it didn't decompress them. `podcast-api.pocketcasts.com/mobile/podcast/full/{uuid}` returns the same data and works as a fallback. |
+| Single episode | `POST /user/episode {uuid, podcast}` returns full metadata plus user state. |
+| RSS via subscription `url` | Not usable. Patreon returned an 840 KB HTML page, not XML. It isn't needed anyway. |
 
-**Open question:** where to get the private feed's full episode list (UUIDs and titles) so unplayed episodes can be matched and written. `scripts/probe_pocketcasts_feed.py` tests these candidates:
-- the other cache and podcast-api paths
-- `/user/episode`
-- the feed's own RSS
+**Matching looks straightforward.** The newest cache episode is "Hidden Cache - Try Not to Peep" with duration 2838 s. Patreon's sample media is the same title with 2837.84 s. The feed also contains non-Hidden-Cache posts (for example "Non-Fatal Flaws"), so some episodes on both sides will legitimately stay unmatched.
 
-It also checks whether more than one subscription matches "Button Boys" (public and private feeds).
+**Sync plan:**
+- Fetch the episode catalogue from the cache host.
+- Fetch user state from `/user/podcast/episodes`, which only lists touched episodes; anything missing is unplayed at position 0.
+- Write with `/sync/update_episode`.
+- Handle `has_more_episodes` (its value wasn't printed; check it in Phase 3).
+
+## Infrastructure
+
+The LXC showed **intermittent DNS failures** (`gaierror`) on hosts that resolved fine moments earlier. The `dns: [1.1.1.1, 8.8.8.8]` line in the compose file is needed. The API clients should also retry on transient DNS and connection errors.
+
+## Still open
+
+- Patreon progress shape for audio posts (needs an audio post with some progress).
+- `PATREON_TIMESTAMP_PARAM` for resume links (spec 9a).
+- The Patreon list endpoint reports 64 posts, but the collection says 63. Probably a drop or unlisted post; check during discovery.
