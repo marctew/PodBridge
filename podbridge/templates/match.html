@@ -4,7 +4,9 @@
 <p><a href="{{ back }}">← Back to the list</a></p>
 <h1>{{ episode.title }}</h1>
 <p class="muted">
-  {{ episode.source_label }} · published {{ episode.published_at | localtime }} · {{ episode.duration_secs | hms }}
+  {{ episode.source_label }} ·
+  {% if episode.published_at %}published {{ episode.published_at | localtime }}{% else %}publish date not fetched yet{% endif %}
+  · {{ episode.duration_secs | hms }}
   · {% if episode.match_method == 'none' %}{% if episode.match_locked %}marked as no match{% else %}unmatched{% endif %}
     {% else %}matched ({{ episode.match_method.replace('_', ' ') }}){% endif %}
 </p>
@@ -31,7 +33,8 @@
 <section class="card table-card">
   <h2>Pocket Casts episodes</h2>
   {% if candidates %}
-  <p class="muted">Closest publish date first. Episodes already matched elsewhere are listed last.</p>
+  <p class="muted">{{ 'Closest publish date first' if episode.published_at else 'Most similar title first' }}.
+    Episodes already matched elsewhere are listed last.</p>
   <div class="table-wrap">
     <table>
       <thead><tr><th>Title</th><th>Published</th><th class="num">Length</th><th></th></tr></thead>

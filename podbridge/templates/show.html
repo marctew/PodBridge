@@ -2,7 +2,7 @@
 {% from "_media.html" import art_img, placeholder, episode_thumb %}
 {% block title %}{{ show.title }}{% endblock %}
 {% block content %}
-{% set method_labels = {'auto_title': 'Title', 'auto_duration': 'Date + length', 'auto_date': 'Date', 'manual': 'Manual'} %}
+{% set method_labels = {'auto_title': 'Title', 'auto_duration': 'Date + length', 'auto_date': 'Fuzzy', 'manual': 'Manual'} %}
 <p><a href="{{ url_for('main.library_page') }}">← Library</a></p>
 
 <section class="hero">

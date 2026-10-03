@@ -116,12 +116,35 @@ def _words(title: str) -> set[str]:
     return {w for w in re.findall(r"[a-z0-9]+", text) if w not in _STOPWORDS}
 
 
-def title_similarity(a: str, b: str) -> float:
-    """Best of character similarity and word overlap (Dice), so reordered titles still score."""
+_LABEL = re.compile(r"^\s*([^:|]{1,30}?):\s+(?=\S)")
+
+
+def strip_label(title: str) -> str:
+    """'Q&A: Why is the case unsolved?' -> 'Why is the case unsolved?' (prefix of at most 3 words)."""
+    match = _LABEL.match(title)
+    if not match or len(match.group(1).split()) > 3:
+        return title
+    return title[match.end():]
+
+
+def title_variants(title: str) -> set[str]:
+    """The title as-is and without a short 'Label:' prefix. Comparing every variant and taking
+    the best means a prefix on one side only ('Q&A:', 'Special episode:') can't hurt a match,
+    and stripping a prefix that was really part of the title can't either."""
+    return {title, strip_label(title)}
+
+
+def _similarity(a: str, b: str) -> float:
     chars = SequenceMatcher(None, normalise_title(a), normalise_title(b)).ratio()
     wa, wb = _words(a), _words(b)
     words = 2 * len(wa & wb) / (len(wa) + len(wb)) if wa and wb else 0.0
     return max(chars, words)
+
+
+def title_similarity(a: str, b: str) -> float:
+    """Best of character similarity and word overlap (Dice) across label-stripped variants,
+    so reordered or prefixed titles still score."""
+    return max(_similarity(x, y) for x in title_variants(a) for y in title_variants(b))
 
 
 _SUFFIX = re.compile(r"\s*[|｜]\s*([^|｜]+)$")
@@ -152,9 +175,13 @@ def match_episodes_loose(
 
     0. If the source feeds several podcasts and a video's '| suffix' names one of them,
        only that podcast's episodes are candidates.
-    1. Exact normalised title (unique), ignoring the '| Channel Name' suffix.
-    2. Otherwise Pocket Casts episodes published within 30 hours: a single one wins;
-       several are separated by title similarity (best >= 0.45 and 0.15 clear of the next).
+    1. Exact normalised title (unique), ignoring the '| Channel Name' suffix and a short
+       'Label:' prefix on either side ('Q&A:', 'Special episode:').
+    2. If the video's publish date is known: Pocket Casts episodes published within 30 hours.
+       A single one wins; several are separated by title similarity (best >= 0.45 and
+       0.15 clear of the next).
+    3. If the date isn't known yet: title similarity alone among episodes within 10% of the
+       video's length (best >= 0.45 and 0.2 clear of the next).
     Contested Pocket Casts episodes go to nobody.
     """
     available = [p for p in pocket if p.uuid not in taken]
@@ -166,7 +193,8 @@ def match_episodes_loose(
 
     by_title: dict[str, list[PocketSide]] = defaultdict(list)
     for p in available:
-        by_title[normalise_title(p.title)].append(p)
+        for variant in {normalise_title(v) for v in title_variants(p.title)}:
+            by_title[variant].append(p)
 
     # YouTube titles usually end in " | Channel Name"; podcast titles don't.
     source = [PatreonSide(ep.episode_id, strip_channel_suffix(ep.title), ep.published_at, ep.duration_secs)
@@ -174,7 +202,8 @@ def match_episodes_loose(
     title_matches: dict[int, tuple[str, str]] = {}
     rest: list[PatreonSide] = []
     for ep in source:
-        same = allowed(ep, by_title.get(normalise_title(ep.title), []))
+        found = {p.uuid: p for v in title_variants(ep.title) for p in by_title.get(normalise_title(v), [])}
+        same = allowed(ep, list(found.values()))
         if len(same) == 1:
             title_matches[ep.episode_id] = (same[0].uuid, "auto_title")
         else:
@@ -187,6 +216,9 @@ def match_episodes_loose(
     for ep in rest:
         when = _parse_time(ep.published_at)
         if when is None:
+            match = _best_by_title_and_length(ep, allowed(ep, remaining))
+            if match is not None:
+                date_matches[ep.episode_id] = (match.uuid, "auto_date")
             continue
         near = [p for p in allowed(ep, remaining)
                 if (t := _parse_time(p.published_at)) is not None and abs(t - when) <= LOOSE_DATE_TOLERANCE]
@@ -200,6 +232,27 @@ def match_episodes_loose(
                 date_matches[ep.episode_id] = (scored[0][1].uuid, "auto_date")
 
     return {**title_matches, **_uncontested(date_matches)}
+
+
+LENGTH_TOLERANCE = 0.10
+NO_DATE_SIMILARITY_MARGIN = 0.2
+
+
+def _best_by_title_and_length(ep: PatreonSide, candidates: list[PocketSide]) -> PocketSide | None:
+    """Fallback before a YouTube video's publish date is known: a clear title winner among
+    episodes of similar length."""
+    if ep.duration_secs:
+        candidates = [p for p in candidates if p.duration_secs is None
+                      or abs(p.duration_secs - ep.duration_secs) <= LENGTH_TOLERANCE * ep.duration_secs]
+    if not candidates:
+        return None
+    scored = sorted(((title_similarity(ep.title, p.title), p) for p in candidates),
+                    key=lambda sp: sp[0], reverse=True)
+    best = scored[0][0]
+    runner_up = scored[1][0] if len(scored) > 1 else 0.0
+    if best >= MIN_TITLE_SIMILARITY and best - runner_up >= NO_DATE_SIMILARITY_MARGIN:
+        return scored[0][1]
+    return None
 
 
 def _uncontested(proposals: dict[int, tuple[str, str]]) -> dict[int, tuple[str, str]]:

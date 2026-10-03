@@ -19,7 +19,7 @@ from .linking import (
 )
 from .patreon import PatreonBlocked, PatreonError, PatreonSessionExpired
 from .pocketcasts import PocketCastsAuthError, PocketCastsBlocked, PocketCastsError
-from .matching import title_similarity
+from .matching import strip_channel_suffix, title_similarity
 from . import artwork, library
 from .library import EPISODE_QUERY, annotate
 from .resume import TIMESTAMP_PARAM_PATTERN
@@ -509,8 +509,17 @@ def match_episode(episode_id: int):
         "           JOIN sources s ON s.id = e.source_id WHERE s.enabled = 1) other "
         "  ON other.pocketcasts_episode_uuid = pe.uuid AND other.id != ? "
         "WHERE sp.source_id = ?", (episode_id, episode["source_id"])).fetchall()
-    candidates = sorted(rows, key=lambda r: (r["taken_by_id"] is not None,
-                                             _days_apart(r["published_at"], episode["published_at"])))
+    title = strip_channel_suffix(episode["title"])
+
+    def closeness(r) -> tuple:
+        length_gap = (abs(r["duration_secs"] - episode["duration_secs"])
+                      if r["duration_secs"] and episode["duration_secs"] else float("inf"))
+        if episode["published_at"]:
+            return (_days_apart(r["published_at"], episode["published_at"]), -title_similarity(title, r["title"]))
+        # No date yet (a YouTube video whose details haven't been fetched): most similar title first.
+        return (-round(title_similarity(title, r["title"]), 2), length_gap)
+
+    candidates = sorted(rows, key=lambda r: (r["taken_by_id"] is not None, closeness(r)))
     several = len({r["podcast_uuid"] for r in rows}) > 1
     back = safe_next(request.args.get("next") or url_for("main.episodes"))
     return render_template("match.html", episode=episode, candidates=candidates, several_podcasts=several,

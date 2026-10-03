@@ -15,7 +15,7 @@
   {% endfor %}
 </nav>
 
-{% set method_labels = {'auto_title': 'Title', 'auto_duration': 'Date + length', 'auto_date': 'Date', 'manual': 'Manual'} %}
+{% set method_labels = {'auto_title': 'Title', 'auto_duration': 'Date + length', 'auto_date': 'Fuzzy', 'manual': 'Manual'} %}
 {% for source in sources %}
   {% set rows = by_source.get(source.id, []) %}
   <section class="card table-card" id="source-{{ source.id }}">
