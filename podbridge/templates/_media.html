@@ -1,0 +1,45 @@
+{# Artwork and Plex-style cards. Images are served from the local cache via /art/<key>. #}
+
+{% macro art_img(key, fallback=None, cls="") -%}
+  {%- if key -%}
+  <img class="art {{ cls }}" src="{{ url_for('main.art', key=key) }}" loading="lazy" alt=""
+       {% if fallback %}onerror="this.onerror=function(){this.remove()};this.src='{{ url_for('main.art', key=fallback) }}';this.classList.add('fallback')"
+       {% else %}onerror="this.remove()"{% endif %}>
+  {%- endif -%}
+{%- endmacro %}
+
+{% macro placeholder(title) -%}
+  <span class="art-ph" aria-hidden="true">{{ (title or '?')[:1] | upper }}</span>
+{%- endmacro %}
+
+{% macro episode_thumb(e) -%}
+  <div class="thumb">
+    {{ placeholder(e.show_title or e.title) }}
+    {{ art_img(e.thumb_key, fallback=e.show_art_key) }}
+    {% if e.state == 'unwatched' %}<span class="corner" title="Not started"></span>
+    {% elif e.state == 'played' %}<span class="played" title="Played">✓</span>{% endif %}
+    {% if e.duration_secs %}<span class="len">{{ e.duration_secs | hms }}</span>{% endif %}
+    {% if e.state == 'in_progress' %}<div class="bar"><span style="width: {{ '%.1f' | format(e.progress_pct) }}%"></span></div>{% endif %}
+  </div>
+{%- endmacro %}
+
+{% macro episode_card(e, subtitle) -%}
+  {%- set href = url_for('main.go_episode', episode_id=e.id) if e.state == 'in_progress' else (e.patreon_url or url_for('main.episodes')) -%}
+  <a class="ep-card" href="{{ href }}" target="_blank" rel="noopener" title="{{ e.title }}">
+    {{ episode_thumb(e) }}
+    <span class="ep-title">{{ e.title }}</span>
+    <span class="ep-sub">{{ subtitle }}</span>
+  </a>
+{%- endmacro %}
+
+{% macro show_tile(show) -%}
+  <a class="show-tile" href="{{ url_for('main.show_page', source_id=show.source_id, slug=show.slug) }}">
+    <div class="poster">
+      {{ placeholder(show.title) }}
+      {{ art_img(show.art_key) }}
+      {% if show.unwatched %}<span class="count" title="{{ show.unwatched }} not started">{{ show.unwatched }}</span>{% endif %}
+    </div>
+    <span class="tile-title">{{ show.title }}</span>
+    <span class="ep-sub">{{ show.episodes | length }} episodes{% if show.in_progress %} · {{ show.in_progress }} in progress{% endif %}</span>
+  </a>
+{%- endmacro %}

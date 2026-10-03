@@ -10,7 +10,7 @@ only the fields PodBridge needs; nothing else leaves this module.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Protocol
 
 from .http import BROWSER_UA, HttpClient, json_or_none
@@ -19,7 +19,7 @@ BASE_URL = "https://www.patreon.com"
 REQUEST_GAP_SECS = 1.5
 PAGE_SIZE = 50
 MAX_PAGES = 40
-POST_FIELDS = "title,post_type,published_at,url,post_file"
+POST_FIELDS = "title,post_type,published_at,url,post_file,thumbnail"
 JSONAPI = {
     "json-api-version": "1.0",
     "json-api-use-default-includes": "false",
@@ -57,6 +57,8 @@ class Post:
     media_id: str | None
     duration_secs: float | None
     progress: Progress
+    # Signed, expiring image URL: used once to download the thumbnail, never stored or logged.
+    thumbnail_url: str | None = field(default=None, repr=False, compare=False)
 
 
 @dataclass(frozen=True)
@@ -99,6 +101,24 @@ def _post_page_url(value: Any) -> str | None:
     return url if url and url.startswith(BASE_URL + "/") else None
 
 
+def _https(value: Any) -> str | None:
+    url = _str(value)
+    return url if url and url.startswith("https://") else None
+
+
+def thumbnail_url(attrs: dict, post_file: dict) -> str | None:
+    """The creator's post thumbnail if present, else the video's default frame."""
+    thumb = attrs.get("thumbnail")
+    if isinstance(thumb, dict):
+        for key in ("large", "large_2", "default", "url", "square"):
+            if url := _https(thumb.get(key)):
+                return url
+    elif url := _https(thumb):
+        return url
+    default = post_file.get("default_thumbnail")
+    return _https(default.get("url")) if isinstance(default, dict) else None
+
+
 def parse_post(item: Any) -> Post | None:
     if not isinstance(item, dict) or item.get("type") != "post" or not item.get("id"):
         return None
@@ -114,6 +134,7 @@ def parse_post(item: Any) -> Post | None:
         media_id=str(media_id) if media_id not in (None, "") else None,
         duration_secs=_num(post_file.get("duration")),
         progress=parse_progress(post_file.get("progress")),
+        thumbnail_url=thumbnail_url(attrs, post_file),
     )
 
 

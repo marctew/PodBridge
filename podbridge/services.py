@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from flask import current_app
 
 from .patreon import HttpPatreonClient, PatreonClient
@@ -12,6 +14,11 @@ from .youtube import HttpYouTubeClient, YouTubeClient
 
 class NotConfigured(RuntimeError):
     pass
+
+
+def art_dir() -> Path:
+    """Artwork cache, next to the database (inside the data volume)."""
+    return Path(current_app.config["PODBRIDGE"].database_path).parent / "artwork"
 
 
 def _default_patreon_factory(store: SettingsStore) -> PatreonClient:

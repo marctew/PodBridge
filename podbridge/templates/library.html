@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% from "_media.html" import show_tile %}
+{% block title %}Library{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>Library</h1>
+  <form method="post" action="{{ url_for('main.refresh_episodes') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="next" value="{{ url_for('main.library_page') }}">
+    <button type="submit" class="secondary">Refresh</button>
+  </form>
+</div>
+{% if shows %}
+  <div class="show-grid">
+    {% for show in shows %}{{ show_tile(show) }}{% endfor %}
+  </div>
+{% else %}
+  <p class="muted">No shows yet. Add a source on the <a href="{{ url_for('main.sources') }}">Sources</a> page.</p>
+{% endif %}
+{% endblock %}

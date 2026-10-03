@@ -10,6 +10,9 @@ import logging
 import sqlite3
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
+
+from . import artwork
 
 from .db import utcnow
 from .patreon import PatreonClient, PatreonSessionExpired, Post, Progress
@@ -72,29 +75,49 @@ def upsert_post(conn: sqlite3.Connection, source_id: int, post: Post, with_progr
     return existing is None
 
 
-def discover_source(conn: sqlite3.Connection, client: PatreonClient, source: sqlite3.Row) -> DiscoveryResult:
+def discover_source(conn: sqlite3.Connection, client: PatreonClient, source: sqlite3.Row,
+                    art_dir: Path | None = None, art_budget: list[int] | None = None) -> DiscoveryResult:
     result = DiscoveryResult(source_id=source["id"], label=source["label"])
     posts = client.list_posts(source["campaign_id"], source["collection_id"] or None)
+    kept = []
     with conn:
         for post in posts:
             result.posts_seen += 1
             if not post.media_id:
                 result.skipped_no_media += 1
                 continue
+            kept.append(post)
             if upsert_post(conn, source["id"], post):
                 result.added += 1
             else:
                 result.refreshed += 1
+    if art_dir is not None:
+        _download_thumbnails(conn, art_dir, kept, art_budget if art_budget is not None
+                             else [artwork.MAX_PATREON_DOWNLOADS_PER_RUN])
     log.info("Discovery for source %s: %s", source["id"], result)
     return result
 
 
-def discover_all(conn: sqlite3.Connection, store: SettingsStore, client: PatreonClient) -> list[DiscoveryResult]:
+def _download_thumbnails(conn: sqlite3.Connection, art_dir: Path, posts: list[Post], budget: list[int]) -> None:
+    """Patreon thumbnail URLs are signed and expire, so they're fetched now or never."""
+    for post in posts:
+        if budget[0] <= 0:
+            return
+        key = f"patreon:{post.post_id}"
+        if not post.thumbnail_url or artwork.has_art(conn, key):
+            continue
+        budget[0] -= 1
+        artwork.ensure(conn, art_dir, key, [post.thumbnail_url])
+
+
+def discover_all(conn: sqlite3.Connection, store: SettingsStore, client: PatreonClient,
+                 art_dir: Path | None = None) -> list[DiscoveryResult]:
     """Health check first: a dead session returns logged-out defaults that look like real data."""
     if not check_patreon_session(store, client):
         raise PatreonSessionExpired("Patreon session is not logged in")
     sources = conn.execute("SELECT * FROM sources WHERE enabled = 1 AND kind = 'patreon' ORDER BY id").fetchall()
-    return [discover_source(conn, client, source) for source in sources]
+    budget = [artwork.MAX_PATREON_DOWNLOADS_PER_RUN]
+    return [discover_source(conn, client, source, art_dir, budget) for source in sources]
 
 
 # --- YouTube ---

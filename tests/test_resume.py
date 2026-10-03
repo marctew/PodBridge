@@ -71,7 +71,7 @@ def test_go_latest_and_dashboard_list(app, authed):
     setup_with_progress(app, authed, Progress(2444.5, True, "is_watched", "2026-10-03T12:00:00+00:00"))
     html = authed.get("/").get_data(as_text=True)
     assert "Continue watching" in html
-    assert "40:44 / 47:17" in html and "Patreon is ahead" in html
+    assert "40:44 of 47:17 · Button Boys" in html
     assert authed.get("/go/latest").headers["Location"] == URL + "?t=2444"
 
 

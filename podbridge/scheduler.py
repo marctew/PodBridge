@@ -16,7 +16,7 @@ from flask import Flask, current_app
 
 from .crypto import SecretError
 from .db import get_db
-from .services import NotConfigured, patreon_client, pocketcasts_client, youtube_client
+from .services import NotConfigured, art_dir, patreon_client, pocketcasts_client, youtube_client
 from .youtube import YouTubeError
 from .settings_store import get_store
 from .sync import RunSummary, SyncBusy, run_sync
@@ -40,7 +40,7 @@ def run_sync_now(tier: str) -> RunSummary:
         except (NotConfigured, SecretError, YouTubeError) as exc:
             unavailable[kind] = str(exc)
     return run_sync(get_db(), store, clients.get("patreon"), pocketcasts, tier,
-                    youtube=clients.get("youtube"), unavailable=unavailable)
+                    youtube=clients.get("youtube"), unavailable=unavailable, art_dir=art_dir())
 
 
 def _scheduled_job(app: Flask) -> None:

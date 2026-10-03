@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% from "_media.html" import art_img, placeholder, episode_thumb %}
+{% block title %}{{ show.title }}{% endblock %}
+{% block content %}
+{% set method_labels = {'auto_title': 'Title', 'auto_duration': 'Date + length', 'auto_date': 'Date', 'manual': 'Manual'} %}
+<p><a href="{{ url_for('main.library_page') }}">← Library</a></p>
+
+<section class="hero">
+  {% if show.art_key %}<img class="hero-bg" src="{{ url_for('main.art', key=show.art_key) }}" alt="" onerror="this.remove()">{% endif %}
+  <div class="hero-inner">
+    <div class="poster large">{{ placeholder(show.title) }}{{ art_img(show.art_key) }}</div>
+    <div class="hero-text">
+      <p class="eyebrow">{{ 'YouTube' if show.kind == 'youtube' else 'Patreon' }} · {{ show.source_label }}</p>
+      <h1>{{ show.title }}</h1>
+      <p class="muted">{{ show.episodes | length }} episodes · {{ show.in_progress }} in progress · {{ show.unwatched }} not started</p>
+      {% if up_next %}
+        <a class="button" href="{{ url_for('main.go_episode', episode_id=up_next.id) }}" target="_blank" rel="noopener">
+          ▶ Continue “{{ up_next.title | truncate(48) }}” at {{ up_next.resume.position_secs | hms }}</a>
+      {% endif %}
+    </div>
+  </div>
+</section>
+
+<nav class="tabs" aria-label="Filter">
+  {% for f in filters %}
+    <a href="{{ url_for('main.show_page', source_id=show.source_id, slug=show.slug, filter=f) }}"
+       {% if f == current %}aria-current="page"{% endif %}>{{ f.replace('_', ' ') | capitalize }}</a>
+  {% endfor %}
+</nav>
+
+{% if episodes %}
+<ol class="ep-list">
+  {% for e in episodes %}
+    <li class="ep-row">
+      <a class="ep-row-thumb" href="{{ url_for('main.go_episode', episode_id=e.id) if e.state == 'in_progress' else (e.patreon_url or '#') }}"
+         target="_blank" rel="noopener" aria-label="Open {{ e.title }}">{{ episode_thumb(e) }}</a>
+      <div class="ep-row-body">
+        <h3>{{ e.title }}</h3>
+        <p class="muted">
+          {{ e.published_at | localtime(date_only=True) }}{% if e.duration_secs %} · {{ e.duration_secs | hms }}{% endif %}
+          {% if e.state == 'in_progress' %} · <span class="warn-text">{{ e.resume.position_secs | hms }} ({{ 'Pocket Casts' if e.resume.source == 'pocketcasts' else e.source_name }})</span>
+          {% elif e.state == 'played' %} · Played{% endif %}
+        </p>
+        <p class="ep-row-actions">
+          {% if e.resume_url and e.resume.position_secs > 0 %}
+            <a href="{{ url_for('main.go_episode', episode_id=e.id) }}" target="_blank" rel="noopener">Continue on {{ e.source_name }}</a>
+          {% elif e.patreon_url %}
+            <a href="{{ e.patreon_url }}" target="_blank" rel="noopener">Open on {{ e.source_name }}</a>
+          {% endif %}
+          <a class="match-link" href="{{ url_for('main.match_episode', episode_id=e.id, next=request.full_path.rstrip('?')) }}">
+            {% if e.match_method != 'none' %}Pocket Casts: {{ method_labels[e.match_method] }} match
+            {% elif e.match_locked %}No Pocket Casts match{% else %}<span class="warn-text">Unmatched</span>{% endif %}</a>
+        </p>
+      </div>
+    </li>
+  {% endfor %}
+</ol>
+{% else %}
+  <p class="muted">No episodes {{ 'match this filter' if current != 'all' else 'yet' }}.</p>
+{% endif %}
+{% endblock %}

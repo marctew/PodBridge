@@ -6,7 +6,7 @@ import logging
 from datetime import datetime
 from urllib.parse import urlparse
 
-from flask import Blueprint, abort, flash, jsonify, redirect, render_template, request, url_for
+from flask import Blueprint, abort, flash, jsonify, redirect, render_template, request, send_file, url_for
 
 from .auth import safe_next
 from .crypto import SecretError
@@ -20,11 +20,14 @@ from .linking import (
 from .patreon import PatreonBlocked, PatreonError, PatreonSessionExpired
 from .pocketcasts import PocketCastsAuthError, PocketCastsBlocked, PocketCastsError
 from .matching import title_similarity
-from .resume import TIMESTAMP_PARAM_PATTERN, build_resume_url, last_touched, resume_position
+from . import artwork, library
+from .library import EPISODE_QUERY, annotate
+from .resume import TIMESTAMP_PARAM_PATTERN
 from .scheduler import next_run_at, restart_countdown, run_sync_now, scheduler_running
 from .sync import SyncBusy
 from .services import (
-    NotConfigured, patreon_client, pocketcasts_client, pocketcasts_configured, pocketcasts_tokens, youtube_client,
+    NotConfigured, art_dir, patreon_client, pocketcasts_client, pocketcasts_configured, pocketcasts_tokens,
+    youtube_client,
 )
 from .discovery import check_youtube_session, discover_youtube_all, has_sources
 from .youtube import YouTubeBlocked, YouTubeError, YouTubeSessionExpired
@@ -122,36 +125,12 @@ def youtube_failure(store: SettingsStore, exc: Exception) -> str:
 
 # --- resume links ---
 
-EPISODE_QUERY = (
-    "SELECT e.*, s.pocketcasts_podcast_uuid, s.enabled AS source_enabled, s.kind AS source_kind, "
-    "pe.podcast_uuid AS matched_podcast_uuid, "
-    "p.patreon_position_secs, p.patreon_is_watched, p.patreon_watch_state, p.patreon_updated_at, "
-    "p.pocketcasts_position_secs, p.pocketcasts_status, p.pocketcasts_changed_at, p.last_synced_at "
-    "FROM episodes e JOIN sources s ON s.id = e.source_id LEFT JOIN progress p ON p.episode_id = e.id "
-    "LEFT JOIN pocketcasts_episodes pe ON pe.uuid = e.pocketcasts_episode_uuid"
-)
+def shows() -> list[library.Show]:
+    return library.build_shows(get_db(), get_store().get("patreon_timestamp_param"))
 
 
-def annotate(row, param: str) -> dict:
-    """Row -> dict with resume position, Continue-on-Patreon URL and last-touched time."""
-    ep = dict(row)
-    youtube = ep.get("source_kind") == "youtube"
-    ep["source_name"] = "YouTube" if youtube else "Patreon"
-    ep["resume"] = resume_position(ep["patreon_position_secs"], bool(ep["patreon_is_watched"]),
-                                   ep["duration_secs"], ep["pocketcasts_status"], ep["pocketcasts_position_secs"])
-    ep["resume_url"] = (build_resume_url(ep["patreon_url"], ep["resume"].position_secs, "t" if youtube else param)
-                        if ep["resume"] and ep["patreon_url"] else None)
-    ep["touched"] = last_touched(ep["patreon_updated_at"], ep["pocketcasts_changed_at"])
-    return ep
-
-
-def continue_watching(limit: int | None = 5) -> list[dict]:
-    param = get_store().get("patreon_timestamp_param")
-    rows = get_db().execute(EPISODE_QUERY + " WHERE s.enabled = 1").fetchall()
-    eps = [annotate(r, param) for r in rows]
-    eps = [e for e in eps if e["resume"] and e["resume"].position_secs > 0 and e["resume_url"]]
-    eps.sort(key=lambda e: e["touched"].timestamp() if e["touched"] else 0, reverse=True)
-    return eps[:limit] if limit else eps
+def continue_watching(limit: int | None = 12) -> list[dict]:
+    return library.continue_watching(shows(), limit)
 
 
 def refresh_pocketcasts_states(episode_id: int | None = None) -> None:
@@ -218,6 +197,7 @@ def go_episode(episode_id: int):
 def dashboard():
     store = get_store()
     db = get_db()
+    all_shows = shows()
     last_run = db.execute("SELECT * FROM sync_runs ORDER BY started_at DESC LIMIT 1").fetchone()
     counts = db.execute(
         "SELECT (SELECT COUNT(*) FROM sources WHERE enabled = 1) AS sources, "
@@ -238,8 +218,43 @@ def dashboard():
         counts=counts,
         next_run=next_run_at(),
         scheduler_on=scheduler_running(),
-        watching=continue_watching(),
+        watching=library.continue_watching(all_shows),
+        recent=library.recently_added(all_shows),
     )
+
+
+@bp.get("/library")
+def library_page():
+    return render_template("library.html", shows=shows())
+
+
+@bp.get("/library/<int:source_id>/<slug>")
+def show_page(source_id: int, slug: str):
+    podcast_uuid = None if slug == "-" else slug
+    show = next((s for s in shows() if s.source_id == source_id and s.podcast_uuid == podcast_uuid), None)
+    if show is None:
+        abort(404)
+    current = request.args.get("filter", "all")
+    filters = {"all": lambda e: True, "in_progress": lambda e: e["state"] == "in_progress",
+               "unwatched": lambda e: e["state"] == "unwatched", "played": lambda e: e["state"] == "played"}
+    episodes = [e for e in show.episodes if filters.get(current, filters["all"])(e)]
+    up_next = library.continue_watching([show], limit=1)
+    return render_template("show.html", show=show, episodes=episodes, current=current, filters=list(filters),
+                           up_next=up_next[0] if up_next else None)
+
+
+@bp.get("/art/<key>")
+def art(key: str):
+    """Cached artwork; YouTube thumbnails and podcast art are fetched on first request."""
+    if not artwork.KEY_PATTERN.match(key):
+        abort(404)
+    path = artwork.ensure(get_db(), art_dir(), key) if not key.startswith("patreon:") else None
+    if path is None:
+        row = artwork.cached(get_db(), key)
+        path = art_dir() / row["filename"] if row is not None and row["ok"] else None
+    if path is None or not path.is_file():
+        abort(404)
+    return send_file(path, max_age=7 * 86400)
 
 
 @bp.post("/sync")
@@ -437,7 +452,7 @@ def refresh_episodes():
     db = get_db()
     if has_sources(db, "patreon"):
         try:
-            for r in discover_all(db, store, patreon_client(store)):
+            for r in discover_all(db, store, patreon_client(store), art_dir()):
                 flash(f"Patreon · {r.label}: {r.posts_seen} posts, {r.added} new"
                       + (f", {r.skipped_no_media} without media skipped" if r.skipped_no_media else ""), "ok")
         except PATREON_FAILURES as exc:

@@ -1,11 +1,14 @@
 :root {
   color-scheme: dark;
-  --bg: #111418;
-  --surface: #1a1f25;
-  --border: #2a313a;
-  --text: #e6e9ed;
-  --muted: #8b95a1;
-  --accent: #f0533a;
+  /* Plex-like: near-black greys with an amber accent */
+  --bg: #141516;
+  --surface: #1f2124;
+  --surface-2: #2a2d31;
+  --border: #33373c;
+  --text: #eceff1;
+  --muted: #9aa0a6;
+  --accent: #e5a00d;
+  --on-accent: #1a1a1a;
   --ok: #3fb950;
   --warn: #d29922;
   --bad: #f85149;
@@ -29,7 +32,7 @@ h2 { font-size: 1.05rem; margin: 0 0 .75rem; display: flex; gap: .5rem; align-it
 .topbar nav a[aria-current="page"] { color: var(--text); }
 .logout { margin: 0; }
 
-main { max-width: 960px; margin: 0 auto; padding: 1.5rem 1rem 3rem; }
+main { max-width: 1280px; margin: 0 auto; padding: 1.5rem 1rem 3rem; }
 .grid { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
 .stack > * + * { margin-top: 1rem; }
 
@@ -63,10 +66,12 @@ textarea, input[type=text], input[type=password], input[type=email], input[type=
 }
 input:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 
-button {
-  background: var(--accent); color: #fff; border: 0; border-radius: 6px;
-  padding: .5rem 1.1rem; font: inherit; font-weight: 600; cursor: pointer;
+button, a.button {
+  background: var(--accent); color: var(--on-accent); border: 0; border-radius: 6px;
+  padding: .5rem 1.1rem; font: inherit; font-weight: 600; cursor: pointer; text-decoration: none;
+  display: inline-block;
 }
+a.button:hover, button:hover { filter: brightness(1.08); }
 form .card + button, .narrow button { margin-top: .5rem; }
 button.link { background: none; color: var(--muted); padding: 0; font-weight: 400; }
 button.link:hover { color: var(--text); }
@@ -140,3 +145,86 @@ tr.disabled td { opacity: .55; }
 .watching a { color: var(--text); font-weight: 500; }
 td a.resume { display: block; margin-top: .15rem; font-size: .8rem; color: var(--accent); }
 code { font-family: ui-monospace, Consolas, monospace; font-size: .85em; }
+
+/* ---------- Plex-style media ---------- */
+
+.art-ph {
+  position: absolute; inset: 0; display: grid; place-items: center;
+  background: linear-gradient(135deg, var(--surface-2), var(--surface));
+  color: var(--muted); font-size: 2rem; font-weight: 700;
+}
+img.art { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+img.art.fallback { object-fit: contain; }
+
+/* Shelves (horizontal rows of cards) */
+.shelf { margin-bottom: 1.75rem; }
+.shelf-head { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; margin-bottom: .6rem; }
+.shelf-head h2 { margin: 0; font-size: 1.15rem; }
+.shelf-head a { text-decoration: none; font-size: .875rem; }
+.shelf-row {
+  display: grid; grid-auto-flow: column; grid-auto-columns: minmax(220px, 260px);
+  gap: 1rem; overflow-x: auto; padding-bottom: .5rem; scroll-snap-type: x proximity;
+}
+.shelf-row > * { scroll-snap-align: start; }
+
+/* Episode cards and thumbnails (16:9) */
+.ep-card { display: grid; gap: .3rem; color: var(--text); text-decoration: none; min-width: 0; }
+.ep-card:hover .thumb, .ep-row-thumb:hover .thumb { outline: 2px solid var(--accent); outline-offset: 2px; }
+.thumb { position: relative; aspect-ratio: 16 / 9; border-radius: 6px; overflow: hidden; background: var(--surface); }
+.thumb .len {
+  position: absolute; right: .35rem; bottom: .45rem; padding: 0 .35rem; border-radius: 3px;
+  background: rgba(0, 0, 0, .75); font-size: .75rem; font-variant-numeric: tabular-nums;
+}
+.thumb .bar { position: absolute; left: 0; right: 0; bottom: 0; height: 4px; background: rgba(0, 0, 0, .6); }
+.thumb .bar span { display: block; height: 100%; background: var(--accent); }
+.thumb .corner {  /* Plex's unwatched marker */
+  position: absolute; top: 0; right: 0; width: 0; height: 0;
+  border-style: solid; border-width: 0 1.6rem 1.6rem 0; border-color: transparent var(--accent) transparent transparent;
+}
+.thumb .played {
+  position: absolute; top: .35rem; right: .35rem; width: 1.4rem; height: 1.4rem; border-radius: 50%;
+  display: grid; place-items: center; background: rgba(0, 0, 0, .7); color: var(--accent); font-size: .8rem;
+}
+.ep-title { font-weight: 500; font-size: .9rem; line-height: 1.3;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.ep-sub { color: var(--muted); font-size: .8rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Library grid (square series art) */
+.show-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 1.25rem; }
+.show-tile { display: grid; gap: .3rem; color: var(--text); text-decoration: none; min-width: 0; }
+.poster { position: relative; aspect-ratio: 1; border-radius: 6px; overflow: hidden; background: var(--surface);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, .35); }
+.show-tile:hover .poster { outline: 2px solid var(--accent); outline-offset: 2px; }
+.poster .count {
+  position: absolute; top: .4rem; right: .4rem; min-width: 1.6rem; padding: 0 .4rem; border-radius: 3px;
+  background: var(--accent); color: var(--on-accent); font-weight: 700; font-size: .8rem; text-align: center;
+}
+.tile-title { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Show page hero */
+.hero { position: relative; overflow: hidden; border-radius: 10px; margin-bottom: 1.25rem; background: var(--surface); }
+.hero-bg { position: absolute; inset: -10%; width: 120%; height: 120%; object-fit: cover;
+  filter: blur(40px) saturate(1.2); opacity: .45; }
+.hero::after { content: ""; position: absolute; inset: 0;
+  background: linear-gradient(90deg, rgba(20, 21, 22, .92) 0%, rgba(20, 21, 22, .55) 60%, rgba(20, 21, 22, .3) 100%); }
+.hero-inner { position: relative; z-index: 1; display: flex; gap: 1.5rem; align-items: flex-end; padding: 1.5rem; flex-wrap: wrap; }
+.poster.large { width: 200px; flex: none; }
+.hero-text { flex: 1; min-width: 14rem; }
+.hero-text h1 { font-size: 2rem; margin: 0 0 .3rem; }
+.eyebrow { margin: 0 0 .2rem; color: var(--muted); font-size: .8rem; text-transform: uppercase; letter-spacing: .06em; }
+
+/* Episode list on the show page */
+.ep-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 1rem; }
+.ep-row { display: grid; grid-template-columns: 240px 1fr; gap: 1rem; align-items: start; }
+.ep-row-thumb { display: block; }
+.ep-row-body h3 { margin: .1rem 0 .25rem; font-size: 1rem; }
+.ep-row-body p { margin: 0 0 .3rem; }
+.ep-row-actions { display: flex; gap: 1rem; flex-wrap: wrap; font-size: .875rem; }
+.ep-row-actions a { text-decoration: none; }
+@media (max-width: 640px) {
+  .ep-row { grid-template-columns: 1fr; }
+  .poster.large { width: 140px; }
+  .hero-text h1 { font-size: 1.5rem; }
+}
+
+.status-grid { margin-top: .5rem; }
