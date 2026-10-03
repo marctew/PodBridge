@@ -133,6 +133,16 @@ def test_loose_matching_by_date_and_similarity():
     assert found[2] == ("p-tariff", "auto_date")   # three within 30 h; reordered words still score highest
 
 
+def test_channel_suffix_is_ignored_for_title_matching():
+    from podbridge.matching import strip_channel_suffix
+    assert strip_channel_suffix("WTF went on at RAF Fairford? | The News Agents") == "WTF went on at RAF Fairford?"
+    assert strip_channel_suffix("No suffix here") == "No suffix here"
+    videos = [PatreonSide(1, "WTF went on at RAF Fairford? | The News Agents", "2026-10-01T15:54:35Z", 3189)]
+    pocket = [PocketSide("p1", "WTF went on at RAF Fairford?", "2026-09-29T05:00:00Z", 3500),  # outside 30 h
+              PocketSide("p2", "Something else", "2026-10-01T05:00:00Z", 3000)]
+    assert match_episodes_loose(videos, pocket) == {1: ("p1", "auto_title")}
+
+
 def test_loose_matching_refuses_close_calls():
     videos = [PatreonSide(1, "Weekly roundup", "2026-10-01T12:00:00Z", 2000)]
     pocket = [PocketSide("a", "Monday news", "2026-10-01T05:00:00Z", 2000),

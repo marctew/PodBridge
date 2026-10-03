@@ -123,6 +123,12 @@ def title_similarity(a: str, b: str) -> float:
     return max(chars, words)
 
 
+def strip_channel_suffix(title: str) -> str:
+    """'WTF went on at RAF Fairford? | The News Agents' -> 'WTF went on at RAF Fairford?'"""
+    stripped = re.sub(r"\s*[|｜]\s*[^|｜]+$", "", title)
+    return stripped or title
+
+
 def match_episodes_loose(
     source: list[PatreonSide], pocket: list[PocketSide], taken: set[str] = frozenset(),
 ) -> dict[int, tuple[str, str]]:
@@ -138,6 +144,9 @@ def match_episodes_loose(
     for p in available:
         by_title[normalise_title(p.title)].append(p)
 
+    # YouTube titles usually end in " | Channel Name"; podcast titles don't.
+    source = [PatreonSide(ep.episode_id, strip_channel_suffix(ep.title), ep.published_at, ep.duration_secs)
+              for ep in source]
     title_matches: dict[int, tuple[str, str]] = {}
     rest: list[PatreonSide] = []
     for ep in source:
