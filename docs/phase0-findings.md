@@ -56,5 +56,5 @@ Patreon set `is_watched: true` at 40:44 of 47:18 (about 86%). The flag doesn't m
 ## Still open
 
 - Patreon progress shape for audio posts (needs an audio post with some progress).
-- `PATREON_TIMESTAMP_PARAM` for resume links (spec 9a).
+- ~~Timestamp parameter for resume links~~: confirmed as `t` in plain seconds in a desktop browser. Still to check: whether the Patreon iOS/iPadOS app honours it.
 - The Patreon list endpoint reports 64 posts, but the collection says 63. Probably a drop or unlisted post; check during discovery.

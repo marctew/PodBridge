@@ -206,7 +206,9 @@ When the Patreon session check fails, or Pocket Casts login fails, or three cons
 
 Patreon post URLs accept a timestamp parameter that starts the video at a given point (I confirmed this in the browser). That gives a safe way to carry progress from Pocket Casts back to Patreon: PodBridge never changes Patreon's stored position, it just builds a link that opens the video where I actually am.
 
-- Put the parameter name and format in one constant, `PATREON_TIMESTAMP_PARAM` (**TODO: fill in the exact one I confirmed, e.g. `t`, and whether it takes plain seconds**).
+- Put the parameter name and format in one constant, `PATREON_TIMESTAMP_PARAM`.
+  - **Confirmed 2026-10-03:** `t` in plain seconds; `?t=600` starts at 10:00.
+  - It's a Settings field (default `t`), not a code constant, so it can change without a release.
 - **Resume position** for an episode = the further of the Patreon position and the Pocket Casts position, unless either side says played.
 - **Episodes page:** each matched, unfinished row gets a "Continue on Patreon" link: the post URL plus the timestamp parameter set to `floor(resume position)`.
 - **Dashboard:** a "Continue watching" list of in-progress episodes, most recently touched first, each with that link.
