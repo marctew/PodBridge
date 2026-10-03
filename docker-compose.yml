@@ -1,0 +1,17 @@
+services:
+  podbridge:
+    build: .
+    image: podbridge:latest
+    container_name: podbridge
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "7330:7330"
+    volumes:
+      - podbridge-data:/data
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
+
+volumes:
+  podbridge-data:

@@ -1,0 +1,9 @@
+[project]
+name = "podbridge"
+version = "0.1.0"
+description = "Sync Patreon playback progress into Pocket Casts"
+requires-python = ">=3.12"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

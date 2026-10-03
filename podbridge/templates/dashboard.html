@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% from "_status.html" import status_badge %}
+{% block title %}Dashboard{% endblock %}
+{% block content %}
+<h1>Dashboard</h1>
+
+{% if dry_run %}
+<div class="flash flash-warn">Dry run is on: sync runs will log what they would do without writing to Pocket Casts.</div>
+{% endif %}
+
+<div class="grid">
+  <section class="card">
+    <h2>Connections</h2>
+    <dl class="kv">
+      <dt>Patreon</dt><dd>{{ status_badge(patreon) }}</dd>
+      <dt>Pocket Casts</dt><dd>{{ status_badge(pocketcasts) }}</dd>
+    </dl>
+    {% if patreon.state == 'not_set' or pocketcasts.state == 'not_set' %}
+      <p><a href="{{ url_for('main.settings') }}">Add credentials in Settings</a></p>
+    {% endif %}
+  </section>
+
+  <section class="card">
+    <h2>Sync</h2>
+    <dl class="kv">
+      <dt>Last run</dt>
+      <dd>
+        {% if last_run %}
+          {{ last_run.started_at | localtime }} · {{ last_run.status }}
+          · {{ last_run.episodes_updated }}/{{ last_run.episodes_checked }} updated
+        {% else %}<span class="muted">No runs yet</span>{% endif %}
+      </dd>
+      <dt>Interval</dt><dd>Every {{ interval }} minutes</dd>
+      <dt>Next run</dt><dd><span class="muted">Scheduler not built yet</span></dd>
+    </dl>
+  </section>
+
+  <section class="card">
+    <h2>Library</h2>
+    <dl class="kv">
+      <dt>Enabled sources</dt><dd>{{ counts.sources }}</dd>
+      <dt>Unmatched episodes</dt><dd>{{ counts.unmatched }}</dd>
+    </dl>
+  </section>
+</div>
+{% endblock %}

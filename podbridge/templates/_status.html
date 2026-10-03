@@ -1,0 +1,5 @@
+{% macro status_badge(conn) -%}
+  {%- set labels = {'not_set': 'Not set', 'unknown': 'Not verified', 'ok': 'OK', 'expired': 'Expired', 'error': 'Error'} -%}
+  <span class="badge badge-{{ conn.state }}">{{ labels.get(conn.state, conn.state) }}</span>
+  {%- if conn.verified_at %} <span class="muted">verified {{ conn.verified_at | localtime }}</span>{% endif -%}
+{%- endmacro %}

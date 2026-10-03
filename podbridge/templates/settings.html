@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% from "_status.html" import status_badge %}
+{% block title %}Settings{% endblock %}
+
+{% block content %}
+{% macro secret_field(key, label, type="password", autocomplete="off", hint=None) %}
+  <div class="field">
+    <label for="{{ key }}">{{ label }}</label>
+    <input id="{{ key }}" name="{{ key }}" type="{{ type }}" autocomplete="{{ autocomplete }}"
+           placeholder="{{ 'Set: leave blank to keep' if secrets_state[key] else 'Not set' }}">
+    <div class="field-meta">
+      {% if secrets_state[key] %}
+        <span class="muted">Set {{ secrets_state[key] | localtime }}</span>
+        <label class="inline"><input type="checkbox" name="clear_{{ key }}" value="1"> Clear</label>
+      {% endif %}
+      {% if hint %}<span class="muted">{{ hint }}</span>{% endif %}
+    </div>
+  </div>
+{% endmacro %}
+
+<h1>Settings</h1>
+<form method="post" class="stack">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+  <section class="card">
+    <h2>Patreon {{ status_badge(patreon) }}</h2>
+    {{ secret_field("patreon_session_id", "session_id cookie",
+                    hint="From patreon.com: DevTools → Application → Cookies → session_id. Pasting “session_id=…” is fine.") }}
+  </section>
+
+  <section class="card">
+    <h2>Pocket Casts {{ status_badge(pocketcasts) }}</h2>
+    {{ secret_field("pocketcasts_email", "Email", type="email") }}
+    {{ secret_field("pocketcasts_password", "Password", autocomplete="new-password") }}
+  </section>
+
+  <section class="card">
+    <h2>Sync</h2>
+    <div class="field">
+      <label for="sync_interval_minutes">Interval (minutes)</label>
+      <input id="sync_interval_minutes" name="sync_interval_minutes" type="number"
+             min="{{ min_interval }}" max="{{ max_interval }}" value="{{ interval }}" required>
+    </div>
+    <label class="inline">
+      <input type="checkbox" name="dry_run" value="1" {% if dry_run %}checked{% endif %}>
+      Dry run: log what would change, don't write to Pocket Casts
+    </label>
+  </section>
+
+  <section class="card">
+    <h2>Alerts</h2>
+    {{ secret_field("alert_webhook_url", "Webhook URL (Home Assistant, ntfy…)", type="url",
+                    hint=("Currently posts to " ~ webhook_host) if webhook_host else None) }}
+  </section>
+
+  <p class="muted">Credentials are encrypted at rest and never shown again. “Test” buttons arrive with the API clients.</p>
+  <button type="submit">Save</button>
+</form>
+{% endblock %}
