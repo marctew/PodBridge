@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import re
+import threading
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -28,6 +29,7 @@ from .http import BROWSER_UA, HttpClient
 from .redact import register_secret
 
 BASE_URL = "https://www.youtube.com"
+SESSION_LOCK = threading.RLock()  # serialises every request made with the signed-in cookies
 REQUEST_GAP_SECS = 1.5
 COOKIE_DOMAINS = ("youtube.com", "google.com")
 VIDEO_ID = re.compile(r"^[A-Za-z0-9_-]{11}$")
@@ -295,32 +297,56 @@ def is_logged_in(html: str) -> bool:
 class HttpYouTubeClient:
     def __init__(self, cookies_text: str, on_cookies_changed: Callable[[str], None],
                  session: Any = None, gap_secs: float = REQUEST_GAP_SECS,
-                 sleep: Callable[[float], None] | None = None, public: PublicYouTubeClient | None = None):
+                 sleep: Callable[[float], None] | None = None, public: PublicYouTubeClient | None = None,
+                 load_cookies: Callable[[], str | None] | None = None):
+        """`load_cookies` returns the latest stored cookies; it's read before every request so a
+        rotation saved by another client instance (scheduler thread, another request) is used
+        instead of this instance's stale copy."""
         self.public = public or PublicYouTubeClient(gap_secs=gap_secs, sleep=sleep)
         session = session if session is not None else requests.Session()
-        for c in parse_cookies(cookies_text):
-            register_secret(c["value"])
-            session.cookies.set_cookie(create_cookie(c["name"], c["value"], domain=c["domain"], path=c["path"],
-                                                     secure=c["secure"], expires=c["expires"]))
+        self._load_into(session, cookies_text)
         if not len(session.cookies):
             raise YouTubeSessionExpired("No youtube.com cookies found in the pasted cookies")
+        self._loaded_text = cookies_text
         self._saved = serialise_cookies(session.cookies)
         self.on_cookies_changed = on_cookies_changed
+        self.load_cookies = load_cookies
         extra = {"sleep": sleep} if sleep else {}
         self.http = HttpClient(BASE_URL, {"User-Agent": BROWSER_UA, "Accept-Language": "en-GB"},
                                gap_secs=gap_secs, session=session, **extra)
 
+    @staticmethod
+    def _load_into(session: Any, cookies_text: str) -> None:
+        session.cookies.clear()
+        for c in parse_cookies(cookies_text):
+            register_secret(c["value"])
+            session.cookies.set_cookie(create_cookie(c["name"], c["value"], domain=c["domain"], path=c["path"],
+                                                     secure=c["secure"], expires=c["expires"]))
+
+    def _refresh_from_store(self) -> None:
+        if self.load_cookies is None:
+            return
+        latest = self.load_cookies()
+        if latest and latest not in (self._loaded_text, self._saved):
+            self._load_into(self.http.session, latest)
+            self._loaded_text = latest
+            self._saved = serialise_cookies(self.http.session.cookies)
+
     def _page(self, path: str) -> str:
-        response = self.http.request("GET", path)
-        status = response.status_code
-        if status in (403, 429):
-            raise YouTubeBlocked(f"YouTube returned HTTP {status}")
-        if urlsplit(getattr(response, "url", "") or "").hostname == "consent.youtube.com":
-            raise YouTubeSessionExpired("YouTube redirected to its cookie consent page; re-export the cookies")
-        if status != 200:
-            raise YouTubeError(f"YouTube returned HTTP {status} for {path.split('?')[0]}")
-        self._persist_cookies()
-        return response.text
+        # One signed-in request at a time across the whole process: two clients rotating the
+        # same Google session in parallel can leave the stored copy holding a dead cookie.
+        with SESSION_LOCK:
+            self._refresh_from_store()
+            response = self.http.request("GET", path)
+            status = response.status_code
+            if status in (403, 429):
+                raise YouTubeBlocked(f"YouTube returned HTTP {status}")
+            if urlsplit(getattr(response, "url", "") or "").hostname == "consent.youtube.com":
+                raise YouTubeSessionExpired("YouTube redirected to its cookie consent page; re-export the cookies")
+            if status != 200:
+                raise YouTubeError(f"YouTube returned HTTP {status} for {path.split('?')[0]}")
+            self._persist_cookies()
+            return response.text
 
     def _persist_cookies(self) -> None:
         current = serialise_cookies(self.http.session.cookies)

@@ -47,8 +47,20 @@
           <span class="muted">Set {{ secrets_state['youtube_cookies'] | localtime }}</span>
           <label class="inline"><input type="checkbox" name="clear_youtube_cookies" value="1"> Clear</label>
         {% endif %}
-        <span class="muted">Only needed for YouTube channel sources. Export from a private window, then close it without signing out.
-          Cookies YouTube refreshes are saved automatically.</span>
+        <span class="muted">Only needed for YouTube channel sources. Export from a <strong>Firefox</strong> private window
+          (Chrome on Windows binds Google sessions to the PC, so its exported cookies stop working elsewhere),
+          then close the window without signing out. Don't use the same login anywhere else; PodBridge saves
+          the cookies YouTube refreshes.</span>
+      </div>
+      <div class="field-meta">
+        {% if youtube_login %}
+          {% if youtube_login.expired %}
+            <span class="flash-inline bad">Last login lasted {{ youtube_login.span }}
+              (pasted {{ youtube_login.started | localtime }}, stopped {{ youtube_login.expired | localtime }}).</span>
+          {% else %}
+            <span class="muted">Current login pasted {{ youtube_login.started | localtime }}, working for {{ youtube_login.span }}.</span>
+          {% endif %}
+        {% endif %}
       </div>
     </div>
     <button type="submit" name="action" value="test_youtube" class="secondary">Save &amp; test</button>

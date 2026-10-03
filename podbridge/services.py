@@ -59,7 +59,8 @@ def _default_youtube_factory(store: SettingsStore) -> YouTubeClient:
     cookies = store.get_secret("youtube_cookies")
     if not cookies:
         raise NotConfigured("YouTube cookies are not set. Add them in Settings.")
-    return HttpYouTubeClient(cookies, on_cookies_changed=lambda text: store.set_secret("youtube_cookies", text))
+    return HttpYouTubeClient(cookies, on_cookies_changed=lambda text: store.set_secret("youtube_cookies", text),
+                             load_cookies=lambda: store.get_secret("youtube_cookies"))
 
 
 def youtube_public_client():

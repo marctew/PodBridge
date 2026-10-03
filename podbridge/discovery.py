@@ -130,7 +130,15 @@ def check_youtube_session(store: SettingsStore, client) -> bool:
     ok = client.check_session()
     store.set("youtube_status", "ok" if ok else "expired")
     store.set("youtube_verified_at", utcnow())
+    if not ok:
+        note_youtube_expiry(store)
     return ok
+
+
+def note_youtube_expiry(store: SettingsStore) -> None:
+    """Remember when the pasted YouTube login first stopped working, to show how long it lasted."""
+    if not store.get("youtube_expired_at"):
+        store.set("youtube_expired_at", utcnow())
 
 
 DETAILS_RETRY_AFTER = timedelta(days=1)

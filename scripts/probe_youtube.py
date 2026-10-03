@@ -42,7 +42,9 @@ def make_client() -> HttpYouTubeClient:
     if not cookies:
         sys.exit("No YouTube cookies stored in PodBridge. Add them in Settings, or set YOUTUBE_COOKIES_FILE.")
     print("Using PodBridge's stored cookies (refreshed cookies are saved back)")
-    return HttpYouTubeClient(cookies, on_cookies_changed=lambda text: store.set_secret("youtube_cookies", text))
+    # load_cookies: re-read before each request, in case PodBridge rotated the session meanwhile.
+    return HttpYouTubeClient(cookies, on_cookies_changed=lambda text: store.set_secret("youtube_cookies", text),
+                             load_cookies=lambda: store.get_secret("youtube_cookies"))
 
 
 def main() -> None:

@@ -32,7 +32,9 @@ from .services import (
     NotConfigured, art_dir, patreon_client, pocketcasts_client, pocketcasts_configured, pocketcasts_tokens,
     youtube_client,
 )
-from .discovery import check_youtube_session, discover_youtube_all, has_sources, missing_youtube_dates
+from .discovery import (
+    check_youtube_session, discover_youtube_all, has_sources, missing_youtube_dates, note_youtube_expiry,
+)
 from .youtube import YouTubeBlocked, YouTubeError, YouTubeSessionExpired
 from .settings_store import MAX_INTERVAL_MINUTES, MIN_INTERVAL_MINUTES, SettingsStore, get_store
 
@@ -119,6 +121,7 @@ def youtube_failure(store: SettingsStore, exc: Exception) -> str:
     if isinstance(exc, YouTubeSessionExpired):
         store.set("youtube_status", "expired")
         store.set("youtube_verified_at", utcnow())
+        note_youtube_expiry(store)
         return f"YouTube login has expired: {exc}. Export fresh cookies and paste them in Settings."
     if isinstance(exc, YouTubeBlocked):
         return f"{exc}: YouTube is pushing back, so try again later."
@@ -330,12 +333,30 @@ def settings():
         patreon=connection_status(store, "patreon"),
         pocketcasts=connection_status(store, "pocketcasts"),
         youtube=connection_status(store, "youtube"),
+        youtube_login=youtube_login_lifetime(store),
         interval=store.get_int("sync_interval_minutes"),
         dry_run=store.get_bool("dry_run"),
         timestamp_param=store.get("patreon_timestamp_param"),
         min_interval=MIN_INTERVAL_MINUTES,
         max_interval=MAX_INTERVAL_MINUTES,
     )
+
+
+def youtube_login_lifetime(store: SettingsStore) -> dict | None:
+    """When the current YouTube login was pasted, when it stopped working, and how long it lasted."""
+    started = store.get("youtube_login_started_at")
+    if not started:
+        return None
+    expired = store.get("youtube_expired_at")
+    end = datetime.fromisoformat((expired or utcnow()).replace("Z", "+00:00"))
+    hours = (end - datetime.fromisoformat(started.replace("Z", "+00:00"))).total_seconds() / 3600
+    if hours < 1:
+        span = f"{round(hours * 60)} minutes"
+    elif hours < 48:
+        span = f"{hours:.1f} hours"
+    else:
+        span = f"{hours / 24:.1f} days"
+    return {"started": started, "expired": expired, "span": span}
 
 
 def save_settings(store: SettingsStore, form) -> list[str]:
@@ -367,6 +388,10 @@ def save_settings(store: SettingsStore, form) -> list[str]:
         if service == "pocketcasts":
             store.delete("pocketcasts_refresh_token")
             pocketcasts_tokens().clear()
+        if service == "youtube":
+            # A fresh login: start timing how long it lasts.
+            store.set("youtube_login_started_at", utcnow())
+            store.delete("youtube_expired_at")
 
     try:
         interval = int(form.get("sync_interval_minutes", ""))

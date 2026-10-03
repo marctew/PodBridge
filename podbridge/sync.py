@@ -21,7 +21,7 @@ from pathlib import Path
 
 from .crypto import SecretError
 from .db import utcnow
-from .discovery import discover_all, discover_youtube_all, has_sources
+from .discovery import discover_all, discover_youtube_all, has_sources, note_youtube_expiry
 from .http import TransportError
 from .linking import refresh_all
 from .patreon import PatreonClient, PatreonError, PatreonSessionExpired
@@ -92,6 +92,8 @@ def _discover(conn, store, kind: str, client, unavailable: dict[str, str],
     except (PatreonSessionExpired, YouTubeSessionExpired) as exc:
         store.set(f"{kind}_status", "expired")
         store.set(f"{kind}_verified_at", utcnow())
+        if kind == "youtube":
+            note_youtube_expiry(store)
         return "aborted", f"{label} session expired: {exc}"
     except (PatreonError, YouTubeError, TransportError, SecretError) as exc:
         return "error", f"{label}: {type(exc).__name__}: {exc}"

@@ -237,4 +237,5 @@ input[type=search] {
 }
 .table-card > p[hidden] { display: none; }
 .backfill { margin: .25rem 0 .75rem; align-items: center; }
+.flash-inline.bad { color: var(--bad); font-size: .875rem; }
 td .inline-form { margin-top: .15rem; }
