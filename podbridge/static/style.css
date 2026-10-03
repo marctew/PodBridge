@@ -236,3 +236,5 @@ input[type=search] {
   border: 1px solid var(--border); border-radius: 6px; font: inherit;
 }
 .table-card > p[hidden] { display: none; }
+.backfill { margin: .25rem 0 .75rem; align-items: center; }
+td .inline-form { margin-top: .15rem; }

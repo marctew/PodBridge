@@ -61,19 +61,22 @@ def _hms(secs: float | None) -> str:
 
 def run_sync(conn: sqlite3.Connection, store: SettingsStore, patreon: PatreonClient | None,
              pocketcasts: PocketCastsClient, tier: str, youtube: YouTubeClient | None = None,
-             unavailable: dict[str, str] | None = None, art_dir: Path | None = None) -> RunSummary:
+             unavailable: dict[str, str] | None = None, art_dir: Path | None = None,
+             youtube_detail_budget: int | None = None) -> RunSummary:
     """`unavailable` maps a source kind to why its client couldn't be built (e.g. not configured).
-    `art_dir`, if given, is where Patreon thumbnails are cached during discovery."""
+    `art_dir`, if given, is where Patreon thumbnails are cached during discovery.
+    `youtube_detail_budget` caps YouTube watch-page lookups (None = the interactive default)."""
     if not _lock.acquire(blocking=False):
         raise SyncBusy("A sync is already running")
     try:
-        return _run(conn, store, patreon, youtube, pocketcasts, tier, unavailable or {}, art_dir)
+        return _run(conn, store, patreon, youtube, pocketcasts, tier, unavailable or {}, art_dir,
+                    youtube_detail_budget)
     finally:
         _lock.release()
 
 
 def _discover(conn, store, kind: str, client, unavailable: dict[str, str],
-              art_dir: Path | None = None) -> tuple[str, str] | None:
+              art_dir: Path | None = None, youtube_detail_budget: int | None = None) -> tuple[str, str] | None:
     """Discovery for one source kind. Returns (status, message) on failure, None on success or no sources.
     Each kind fails independently: a dead YouTube login doesn't stop Patreon, and vice versa."""
     if not has_sources(conn, kind):
@@ -85,7 +88,7 @@ def _discover(conn, store, kind: str, client, unavailable: dict[str, str],
         if kind == "patreon":
             discover_all(conn, store, client, art_dir)
         else:
-            discover_youtube_all(conn, store, client)
+            discover_youtube_all(conn, store, client, youtube_detail_budget)
     except (PatreonSessionExpired, YouTubeSessionExpired) as exc:
         store.set(f"{kind}_status", "expired")
         store.set(f"{kind}_verified_at", utcnow())
@@ -95,7 +98,8 @@ def _discover(conn, store, kind: str, client, unavailable: dict[str, str],
     return None
 
 
-def _run(conn, store, patreon, youtube, pocketcasts, tier, unavailable, art_dir) -> RunSummary:
+def _run(conn, store, patreon, youtube, pocketcasts, tier, unavailable, art_dir,
+         youtube_detail_budget) -> RunSummary:
     dry_run = store.get_bool("dry_run")
     with conn:
         run_id = conn.execute(
@@ -106,7 +110,7 @@ def _run(conn, store, patreon, youtube, pocketcasts, tier, unavailable, art_dir)
     failures: list[tuple[str, str]] = []
     try:
         for kind, client in (("patreon", patreon), ("youtube", youtube)):
-            failure = _discover(conn, store, kind, client, unavailable, art_dir)
+            failure = _discover(conn, store, kind, client, unavailable, art_dir, youtube_detail_budget)
             if failure:
                 failures.append(failure)
         # Episodes whose source failed this run keep their old progress, which the

@@ -295,7 +295,8 @@ def is_logged_in(html: str) -> bool:
 class HttpYouTubeClient:
     def __init__(self, cookies_text: str, on_cookies_changed: Callable[[str], None],
                  session: Any = None, gap_secs: float = REQUEST_GAP_SECS,
-                 sleep: Callable[[float], None] | None = None):
+                 sleep: Callable[[float], None] | None = None, public: PublicYouTubeClient | None = None):
+        self.public = public or PublicYouTubeClient(gap_secs=gap_secs, sleep=sleep)
         session = session if session is not None else requests.Session()
         for c in parse_cookies(cookies_text):
             register_secret(c["value"])
@@ -341,6 +342,45 @@ class HttpYouTubeClient:
             raise YouTubeError("Couldn't find the history data on the page")
         return parse_history(data)
 
+    # Public pages go through a separate cookieless client: they don't need the login, and
+    # keeping them off the signed-in session means fewer cookie rotations and no clash with
+    # the background date backfill.
+
+    def video_details(self, video_id: str) -> VideoDetails | None:
+        return self.public.video_details(video_id)
+
+    def channel_videos(self, channel_id: str) -> list[PlaylistItem]:
+        return self.public.channel_videos(channel_id)
+
+    def resolve_channel(self, handle_or_id: str) -> Channel | None:
+        return self.public.resolve_channel(handle_or_id)
+
+
+class PublicYouTubeClient:
+    """youtube.com pages that need no login: watch pages, playlists, channel pages.
+
+    Sends only YouTube's consent cookie (SOCS), so UK/EU requests aren't redirected to the
+    cookie-consent page. Never touches the signed-in session."""
+
+    def __init__(self, session: Any = None, gap_secs: float = REQUEST_GAP_SECS,
+                 sleep: Callable[[float], None] | None = None):
+        session = session if session is not None else requests.Session()
+        session.cookies.set_cookie(create_cookie("SOCS", "CAI", domain=".youtube.com", path="/", secure=True))
+        extra = {"sleep": sleep} if sleep else {}
+        self.http = HttpClient(BASE_URL, {"User-Agent": BROWSER_UA, "Accept-Language": "en-GB"},
+                               gap_secs=gap_secs, session=session, **extra)
+
+    def _page(self, path: str) -> str:
+        response = self.http.request("GET", path)
+        status = response.status_code
+        if status in (403, 429):
+            raise YouTubeBlocked(f"YouTube returned HTTP {status}")
+        if urlsplit(getattr(response, "url", "") or "").hostname == "consent.youtube.com":
+            raise YouTubeError("YouTube redirected a public page to its consent screen")
+        if status != 200:
+            raise YouTubeError(f"YouTube returned HTTP {status} for {path.split('?')[0]}")
+        return response.text
+
     def video_details(self, video_id: str) -> VideoDetails | None:
         if not VIDEO_ID.match(video_id):
             return None
@@ -354,7 +394,7 @@ class HttpYouTubeClient:
         for playlist in uploads_playlists(channel_id):
             try:
                 html = self._page(f"/playlist?list={playlist}")
-            except (YouTubeBlocked, YouTubeSessionExpired):
+            except YouTubeBlocked:
                 raise
             except YouTubeError:
                 continue  # e.g. a channel without a long-form playlist

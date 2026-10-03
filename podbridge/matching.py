@@ -58,6 +58,9 @@ def _parse_time(value: str | None) -> datetime | None:
         return None
 
 
+parse_time = _parse_time
+
+
 def close_enough(patreon: PatreonSide, pocket: PocketSide) -> bool:
     a, b = _parse_time(patreon.published_at), _parse_time(pocket.published_at)
     if a is None or b is None or patreon.duration_secs is None or pocket.duration_secs is None:

@@ -136,19 +136,22 @@ def check_youtube_session(store: SettingsStore, client) -> bool:
 DETAILS_RETRY_AFTER = timedelta(days=1)
 
 
-MAX_DETAIL_FETCHES_PER_RUN = 25  # watch pages are ~1.5 s each; the rest are fetched on later runs
+MAX_DETAIL_FETCHES_PER_RUN = 25  # interactive runs: watch pages are ~1.5 s each
+BACKGROUND_DETAIL_FETCHES = 400  # scheduled runs aren't waited on, so fetch everything missing
 
 
-def _cached_details(conn: sqlite3.Connection, client, video_id: str, budget: list[int] | None = None):
-    """Watch-page details, fetched once. A failed lookup is cached too, and retried after a day.
-    `budget` is a one-item list counting fetches left this run; when it's spent, the cached row
-    (possibly None) is returned without fetching."""
+def _cached_details(conn: sqlite3.Connection, client, video_id: str, budget: list[int] | None = None,
+                    retry_failed: bool = False):
+    """Watch-page details, fetched once. A failed lookup is cached too, and retried after a day
+    (or straight away with retry_failed). `budget` is a one-item list counting fetches left this
+    run; when it's spent, the cached row (possibly None) is returned without fetching."""
     from .youtube import YouTubeBlocked, YouTubeError, YouTubeSessionExpired
 
     row = conn.execute("SELECT * FROM youtube_videos WHERE video_id = ?", (video_id,)).fetchone()
     if row is not None:
         fetched = datetime.fromisoformat(row["fetched_at"].replace("Z", "+00:00"))
-        if row["channel_id"] or datetime.now(timezone.utc) - fetched < DETAILS_RETRY_AFTER:
+        if row["published_at"] or (not retry_failed and (
+                row["channel_id"] or datetime.now(timezone.utc) - fetched < DETAILS_RETRY_AFTER)):
             return row
     if budget is not None:
         if budget[0] <= 0:
@@ -202,7 +205,35 @@ def _store_video(conn, source, result: DiscoveryResult, video_id: str, title: st
             result.refreshed += 1
 
 
-def discover_youtube_all(conn: sqlite3.Connection, store: SettingsStore, client) -> list[DiscoveryResult]:
+def missing_youtube_dates(conn: sqlite3.Connection) -> int:
+    return conn.execute(
+        "SELECT COUNT(*) FROM episodes e JOIN sources s ON s.id = e.source_id "
+        "WHERE s.kind = 'youtube' AND s.enabled = 1 AND e.published_at IS NULL").fetchone()[0]
+
+
+def backfill_youtube_dates(conn: sqlite3.Connection, public_client, budget: int | None = None) -> int:
+    """Fetch publish dates (public watch pages, no login) for YouTube episodes that lack one,
+    newest uploads first. Returns how many dates were filled in."""
+    rows = conn.execute(
+        "SELECT e.id, e.patreon_post_id FROM episodes e JOIN sources s ON s.id = e.source_id "
+        "WHERE s.kind = 'youtube' AND s.enabled = 1 AND e.published_at IS NULL ORDER BY e.id").fetchall()
+    remaining = [budget if budget is not None else len(rows)]
+    filled = 0
+    for row in rows:
+        if remaining[0] <= 0:
+            break
+        # An explicit backfill retries earlier failures rather than waiting a day.
+        details = _cached_details(conn, public_client, row["patreon_post_id"], remaining, retry_failed=True)
+        if details is not None and details["published_at"]:
+            with conn:
+                conn.execute("UPDATE episodes SET published_at = ?, duration_secs = COALESCE(duration_secs, ?) "
+                             "WHERE id = ?", (details["published_at"], details["duration_secs"], row["id"]))
+            filled += 1
+    return filled
+
+
+def discover_youtube_all(conn: sqlite3.Connection, store: SettingsStore, client,
+                         detail_budget: int | None = None) -> list[DiscoveryResult]:
     """Every recent upload of each enabled YouTube channel source (about 100, from the uploads
     playlist), with progress from the first page of watch history.
 
@@ -219,7 +250,7 @@ def discover_youtube_all(conn: sqlite3.Connection, store: SettingsStore, client)
     if not sources:
         return []
     history = {i.video_id: i for i in client.history() if i.percent is not None}
-    budget = [MAX_DETAIL_FETCHES_PER_RUN]
+    budget = [MAX_DETAIL_FETCHES_PER_RUN if detail_budget is None else detail_budget]
 
     def cached(video_id: str):
         return conn.execute("SELECT * FROM youtube_videos WHERE video_id = ?", (video_id,)).fetchone()

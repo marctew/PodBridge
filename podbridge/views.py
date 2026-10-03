@@ -15,7 +15,7 @@ from .discovery import check_patreon_session, discover_all
 from .http import TransportError
 from .linking import (
     MatchError, allow_auto_match, apply_pocketcasts_state, check_pocketcasts_login, link_source, refresh_all,
-    set_manual_match, source_podcasts, unlink, widen_source,
+    set_manual_match, source_podcasts, take_over_match, unlink, widen_source,
 )
 from .patreon import PatreonBlocked, PatreonError, PatreonSessionExpired
 from .pocketcasts import PocketCastsAuthError, PocketCastsBlocked, PocketCastsError
@@ -23,13 +23,16 @@ from .matching import strip_channel_suffix, title_similarity
 from . import artwork, library
 from .library import EPISODE_QUERY, annotate
 from .resume import TIMESTAMP_PARAM_PATTERN
-from .scheduler import next_run_at, restart_countdown, run_sync_now, scheduler_running
+from .scheduler import (
+    backfill_status, next_run_at, restart_countdown, run_date_backfill, run_sync_now, scheduler_running,
+    start_date_backfill,
+)
 from .sync import SyncBusy
 from .services import (
     NotConfigured, art_dir, patreon_client, pocketcasts_client, pocketcasts_configured, pocketcasts_tokens,
     youtube_client,
 )
-from .discovery import check_youtube_session, discover_youtube_all, has_sources
+from .discovery import check_youtube_session, discover_youtube_all, has_sources, missing_youtube_dates
 from .youtube import YouTubeBlocked, YouTubeError, YouTubeSessionExpired
 from .settings_store import MAX_INTERVAL_MINUTES, MIN_INTERVAL_MINUTES, SettingsStore, get_store
 
@@ -538,6 +541,9 @@ def save_match(episode_id: int):
         elif request.form.get("action") == "allow_auto":
             allow_auto_match(db, episode_id)
             flash("Auto-matching re-enabled for this episode; it applies on the next refresh.", "ok")
+        elif request.form.get("action") == "take_over":
+            previous = take_over_match(db, episode_id, request.form.get("uuid", ""))
+            flash(f"Matched here, and unmatched “{previous}”." if previous else "Matched.", "ok")
         else:
             set_manual_match(db, episode_id, request.form.get("uuid", ""))
             flash("Matched.", "ok")
@@ -570,7 +576,22 @@ def sources():
                 collections = patreon_client(store).list_collections(campaign_id)
             except PATREON_FAILURES as exc:
                 flash(patreon_failure(store, exc), "error")
-    return render_template("sources.html", sources=rows, campaign_id=campaign_id, collections=collections)
+    return render_template("sources.html", sources=rows, campaign_id=campaign_id, collections=collections,
+                           missing_dates=missing_youtube_dates(db), backfill=backfill_status())
+
+
+@bp.post("/sources/youtube/dates")
+def fetch_youtube_dates():
+    """Fill in every missing YouTube publish date in the background, then re-match."""
+    if backfill_status().get("running"):
+        flash("Already fetching YouTube dates.", "warn")
+    elif start_date_backfill():
+        flash("Fetching YouTube publish dates in the background (about 1.5 s each). "
+              "Matches update when it finishes; refresh this page to see progress.", "ok")
+    else:
+        filled, matched = run_date_backfill()  # no scheduler (local dev): run inline
+        flash(f"Filled in {filled} YouTube dates; {matched} new matches.", "ok")
+    return redirect(url_for("main.sources"))
 
 
 @bp.post("/sources")

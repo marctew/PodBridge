@@ -8,7 +8,9 @@ import sqlite3
 from dataclasses import dataclass, field
 
 from .db import utcnow
-from .matching import PatreonSide, PocketSide, match_episodes, match_episodes_loose
+from .matching import (
+    LOOSE_DATE_TOLERANCE, PatreonSide, PocketSide, match_episodes, match_episodes_loose, parse_time,
+)
 from .pocketcasts import STATUS_UNPLAYED, EpisodeState, PocketCastsClient
 from .settings_store import SettingsStore
 
@@ -94,7 +96,34 @@ def source_podcasts(conn: sqlite3.Connection, source_id: int) -> dict[str, str |
         "SELECT podcast_uuid, title FROM source_podcasts WHERE source_id = ? ORDER BY rowid", (source_id,))}
 
 
+def _clear_match(conn: sqlite3.Connection, episode_id: int, lock: bool) -> None:
+    conn.execute("UPDATE episodes SET pocketcasts_episode_uuid = NULL, match_method = 'none', match_locked = ?, "
+                 "updated_at = ? WHERE id = ?", (int(lock), utcnow(), episode_id))
+    apply_pocketcasts_state(conn, episode_id, None, None)
+    reset_sync_marker(conn, episode_id)
+
+
+def revalidate_fuzzy_matches(conn: sqlite3.Connection, source_id: int) -> int:
+    """Drop Fuzzy matches that a now-known publish date contradicts (more than the loose date
+    window apart). They were made from title + length alone, before the date was fetched.
+    Manual and exact-title matches are never touched. Returns how many were dropped."""
+    rows = conn.execute(
+        "SELECT e.id, e.published_at, pe.published_at AS pc_published FROM episodes e "
+        "JOIN pocketcasts_episodes pe ON pe.uuid = e.pocketcasts_episode_uuid "
+        "WHERE e.source_id = ? AND e.match_method = 'auto_date' AND e.published_at IS NOT NULL",
+        (source_id,)).fetchall()
+    dropped = 0
+    for row in rows:
+        a, b = parse_time(row["published_at"]), parse_time(row["pc_published"])
+        if a and b and abs(a - b) > LOOSE_DATE_TOLERANCE:
+            _clear_match(conn, row["id"], lock=False)
+            dropped += 1
+    return dropped
+
+
 def auto_match_source(conn: sqlite3.Connection, source: sqlite3.Row) -> int:
+    if source["kind"] == "youtube":
+        revalidate_fuzzy_matches(conn, source["id"])
     podcasts = source_podcasts(conn, source["id"])
     pending = [
         PatreonSide(r["id"], r["title"], r["published_at"], r["duration_secs"])
@@ -214,11 +243,33 @@ def set_manual_match(conn: sqlite3.Connection, episode_id: int, uuid: str) -> No
 def unlink(conn: sqlite3.Connection, episode_id: int) -> None:
     """Remove a match and stop auto-matching from re-linking this episode."""
     with conn:
-        conn.execute(
-            "UPDATE episodes SET pocketcasts_episode_uuid = NULL, match_method = 'none', match_locked = 1, "
-            "updated_at = ? WHERE id = ?", (utcnow(), episode_id))
-        apply_pocketcasts_state(conn, episode_id, None, None)
-        reset_sync_marker(conn, episode_id)
+        _clear_match(conn, episode_id, lock=True)
+
+
+def take_over_match(conn: sqlite3.Connection, episode_id: int, uuid: str) -> str:
+    """Move a Pocket Casts episode from whichever episode holds it to this one (manual match).
+    The previous holder becomes unmatched but free to auto-match something else.
+    Returns the previous holder's title."""
+    with conn:
+        holder = conn.execute(
+            "SELECT e.id, e.title FROM episodes e JOIN sources s ON s.id = e.source_id "
+            "WHERE e.pocketcasts_episode_uuid = ? AND e.id != ? AND s.enabled = 1", (uuid, episode_id)).fetchone()
+        if holder is not None:
+            _clear_match(conn, holder["id"], lock=False)
+    set_manual_match(conn, episode_id, uuid)
+    return holder["title"] if holder else ""
+
+
+def rematch_youtube_offline(conn: sqlite3.Connection) -> int:
+    """Re-run matching for YouTube sources against the cached Pocket Casts catalogue
+    (no network), e.g. after a date backfill. Returns how many new matches were made."""
+    total = 0
+    for source in conn.execute("SELECT * FROM sources WHERE enabled = 1 AND kind = 'youtube' "
+                               "AND pocketcasts_podcast_uuid IS NOT NULL").fetchall():
+        with conn:
+            total += auto_match_source(conn, source)
+            sync_matched_states(conn, source["id"])
+    return total
 
 
 def widen_source(conn: sqlite3.Connection, source_id: int) -> None:

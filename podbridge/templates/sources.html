@@ -51,6 +51,20 @@
     </div>
     <button type="submit" class="secondary">Add channel</button>
   </form>
+  {% if missing_dates or backfill.running %}
+  <form method="post" action="{{ url_for('main.fetch_youtube_dates') }}" class="row backfill">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    {% if backfill.running %}
+      <span class="muted">Fetching YouTube publish dates in the background… {{ missing_dates }} still missing.
+        Refresh this page to see progress.</span>
+    {% else %}
+      <span class="muted">{{ missing_dates }} YouTube episode{{ '' if missing_dates == 1 else 's' }} without a publish date yet.
+        Scheduled syncs fetch them automatically.</span>
+      <button type="submit" class="secondary">Fetch missing dates now</button>
+    {% endif %}
+  </form>
+  {% endif %}
+  {% if backfill.error %}<p class="flash flash-error">Last date fetch stopped: {{ backfill.error }}</p>{% endif %}
   <p class="muted">Uses your YouTube watch history (cookies in Settings). Positions come from the red progress bar, so they're
     accurate to about 1%. If the podcast has inserted ads, its timeline may not line up exactly with the video.</p>
 </section>

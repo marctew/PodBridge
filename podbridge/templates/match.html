@@ -52,7 +52,15 @@
           <td class="num">{{ c.duration_secs | hms }}</td>
           <td class="nowrap">
             {% if c.uuid == episode.pocketcasts_episode_uuid %}<span class="badge badge-ok">Current</span>
-            {% elif c.taken_by_id %}<span class="muted">Matched to “{{ c.taken_by_title }}”</span>
+            {% elif c.taken_by_id %}
+              <span class="muted">Matched to “{{ c.taken_by_title }}”</span>
+              <form method="post" class="inline-form" onsubmit="return confirm(this.dataset.confirm)"
+                    data-confirm="Unmatch “{{ c.taken_by_title }}” and match this episode here instead?">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="next" value="{{ back }}">
+                <input type="hidden" name="uuid" value="{{ c.uuid }}">
+                <button type="submit" name="action" value="take_over" class="link accent">Move here</button>
+              </form>
             {% else %}
               <form method="post">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

@@ -9,7 +9,7 @@ from flask import current_app
 from .patreon import HttpPatreonClient, PatreonClient
 from .pocketcasts import HttpPocketCastsClient, PocketCastsClient, TokenCache
 from .settings_store import SettingsStore
-from .youtube import HttpYouTubeClient, YouTubeClient
+from .youtube import HttpYouTubeClient, PublicYouTubeClient, YouTubeClient
 
 
 class NotConfigured(RuntimeError):
@@ -60,6 +60,12 @@ def _default_youtube_factory(store: SettingsStore) -> YouTubeClient:
     if not cookies:
         raise NotConfigured("YouTube cookies are not set. Add them in Settings.")
     return HttpYouTubeClient(cookies, on_cookies_changed=lambda text: store.set_secret("youtube_cookies", text))
+
+
+def youtube_public_client():
+    """Cookieless client for public YouTube pages (watch pages for publish dates)."""
+    factory = current_app.extensions.get("youtube_public_factory", PublicYouTubeClient)
+    return factory()
 
 
 def youtube_client(store: SettingsStore) -> YouTubeClient:
