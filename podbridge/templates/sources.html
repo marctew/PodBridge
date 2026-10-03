@@ -6,13 +6,20 @@
 <section class="card table-card">
   <div class="table-wrap">
     <table>
-      <thead><tr><th>Label</th><th>Campaign</th><th>Collection</th><th class="num">Episodes</th><th class="num">Matched</th><th>Pocket Casts podcast</th><th></th></tr></thead>
+      <thead><tr><th>Label</th><th>Campaign</th><th>Covers</th><th class="num">Episodes</th><th class="num">Matched</th><th>Pocket Casts podcast</th><th></th></tr></thead>
       <tbody>
       {% for s in sources %}
-        <tr>
+        <tr {% if not s.enabled %}class="disabled"{% endif %}>
           <td>{{ s.label }}</td>
           <td class="mono">{{ s.campaign_id }}</td>
-          <td class="mono">{{ s.collection_id }}</td>
+          <td class="nowrap">
+            {% if s.collection_id %}<span class="mono">Collection {{ s.collection_id }}</span>
+              <form method="post" action="{{ url_for('main.widen_source_route', source_id=s.id) }}" class="inline-form">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="link accent" title="Include every post in this campaign, keeping existing matches">Widen to all posts</button>
+              </form>
+            {% else %}All posts{% endif %}
+          </td>
           <td class="num">{{ s.episode_count }}</td>
           <td class="num">{{ s.matched_count }}</td>
           <td class="nowrap">
@@ -44,27 +51,26 @@
   </form>
 
   {% if collections is not none %}
-    {% if collections %}
     <form method="post" action="{{ url_for('main.add_source') }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <input type="hidden" name="campaign_id" value="{{ campaign_id }}">
+      <input type="hidden" name="default_label" id="default_label" value="All posts">
       <div class="field">
-        <label for="collection_id">Collection</label>
-        <select id="collection_id" name="collection_id" onchange="document.getElementById('label').placeholder = this.selectedOptions[0].dataset.title">
+        <label for="collection_id">Covers</label>
+        <select id="collection_id" name="collection_id"
+                onchange="var t = this.selectedOptions[0].dataset.title; document.getElementById('label').placeholder = t; document.getElementById('default_label').value = t;">
+          <option value="all" data-title="All posts">All posts in the campaign (recommended)</option>
           {% for c in collections %}
-            <option value="{{ c.collection_id }}" data-title="{{ c.title }}">{{ c.title }}{% if c.num_posts is not none %} ({{ c.num_posts }} posts){% endif %}</option>
+            <option value="{{ c.collection_id }}" data-title="{{ c.title }}">Collection: {{ c.title }}{% if c.num_posts is not none %} ({{ c.num_posts }} posts){% endif %}</option>
           {% endfor %}
         </select>
       </div>
       <div class="field">
         <label for="label">Label</label>
-        <input id="label" name="label" type="text" placeholder="{{ collections[0].title }}">
+        <input id="label" name="label" type="text" placeholder="All posts">
       </div>
       <button type="submit">Add source</button>
     </form>
-    {% else %}
-      <p class="muted">No collections found for that campaign.</p>
-    {% endif %}
   {% endif %}
 </section>
 {% endblock %}

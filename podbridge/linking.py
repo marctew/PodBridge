@@ -102,8 +102,11 @@ def auto_match_source(conn: sqlite3.Connection, source: sqlite3.Row) -> int:
             "SELECT uuid, title, published_at, duration_secs FROM pocketcasts_episodes WHERE podcast_uuid = ?",
             (podcast_uuid,))
     ]
+    # Matches held by disabled sources don't block: disabling a narrow source in favour of a
+    # wider one must let the wider one take over its episodes.
     taken = {r[0] for r in conn.execute(
-        "SELECT pocketcasts_episode_uuid FROM episodes WHERE pocketcasts_episode_uuid IS NOT NULL")}
+        "SELECT e.pocketcasts_episode_uuid FROM episodes e JOIN sources s ON s.id = e.source_id "
+        "WHERE e.pocketcasts_episode_uuid IS NOT NULL AND s.enabled = 1")}
     matches = match_episodes(pending, pocket, taken)
     for episode_id, (uuid, method) in matches.items():
         conn.execute(
@@ -174,8 +177,9 @@ def set_manual_match(conn: sqlite3.Connection, episode_id: int, uuid: str) -> No
                                  (uuid, row["pocketcasts_podcast_uuid"])).fetchone()
         if candidate is None:
             raise MatchError("That Pocket Casts episode isn't in this source's podcast")
-        other = conn.execute("SELECT title FROM episodes WHERE pocketcasts_episode_uuid = ? AND id != ?",
-                             (uuid, episode_id)).fetchone()
+        other = conn.execute(
+            "SELECT e.title FROM episodes e JOIN sources s ON s.id = e.source_id "
+            "WHERE e.pocketcasts_episode_uuid = ? AND e.id != ? AND s.enabled = 1", (uuid, episode_id)).fetchone()
         if other is not None:
             raise MatchError(f"Already matched to “{other['title']}”. Unlink that one first.")
         conn.execute(
@@ -193,6 +197,23 @@ def unlink(conn: sqlite3.Connection, episode_id: int) -> None:
             "updated_at = ? WHERE id = ?", (utcnow(), episode_id))
         apply_pocketcasts_state(conn, episode_id, None, None)
         reset_sync_marker(conn, episode_id)
+
+
+def widen_source(conn: sqlite3.Connection, source_id: int) -> None:
+    """Switch a collection source to all posts in its campaign. Existing episodes and matches are
+    kept (episodes are keyed by Patreon post ID), and the next refresh adds the rest."""
+    with conn:
+        row = conn.execute("SELECT campaign_id, label FROM sources WHERE id = ?", (source_id,)).fetchone()
+        if row is None:
+            raise MatchError("No such source")
+        clash = conn.execute("SELECT id FROM sources WHERE campaign_id = ? AND collection_id = '' AND id != ?",
+                             (row["campaign_id"], source_id)).fetchone()
+        if clash:
+            raise MatchError("This campaign already has an all-posts source.")
+        # "Button Boys: Hidden Cache" -> "Button Boys: all posts"
+        label = row["label"]
+        label = f"{label.split(':', 1)[0]}: all posts" if ":" in label else f"{label} (all posts)"
+        conn.execute("UPDATE sources SET collection_id = '', label = ? WHERE id = ?", (label, source_id))
 
 
 def allow_auto_match(conn: sqlite3.Connection, episode_id: int) -> None:

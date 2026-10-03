@@ -69,7 +69,7 @@ def upsert_post(conn: sqlite3.Connection, source_id: int, post: Post) -> bool:
 
 def discover_source(conn: sqlite3.Connection, client: PatreonClient, source: sqlite3.Row) -> DiscoveryResult:
     result = DiscoveryResult(source_id=source["id"], label=source["label"])
-    posts = client.list_posts(source["campaign_id"], source["collection_id"])
+    posts = client.list_posts(source["campaign_id"], source["collection_id"] or None)
     with conn:
         for post in posts:
             result.posts_seen += 1

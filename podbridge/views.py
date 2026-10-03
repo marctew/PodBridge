@@ -15,7 +15,7 @@ from .discovery import check_patreon_session, discover_all
 from .http import TransportError
 from .linking import (
     MatchError, allow_auto_match, apply_pocketcasts_state, check_pocketcasts_login, link_source, refresh_all,
-    set_manual_match, unlink,
+    set_manual_match, unlink, widen_source,
 )
 from .patreon import PatreonBlocked, PatreonError, PatreonSessionExpired
 from .pocketcasts import PocketCastsAuthError, PocketCastsBlocked, PocketCastsError
@@ -438,7 +438,9 @@ def match_episode(episode_id: int):
     if episode["pocketcasts_podcast_uuid"]:
         rows = db.execute(
             "SELECT pe.*, other.id AS taken_by_id, other.title AS taken_by_title FROM pocketcasts_episodes pe "
-            "LEFT JOIN episodes other ON other.pocketcasts_episode_uuid = pe.uuid AND other.id != ? "
+            "LEFT JOIN (SELECT e.id, e.title, e.pocketcasts_episode_uuid FROM episodes e "
+            "           JOIN sources s ON s.id = e.source_id WHERE s.enabled = 1) other "
+            "  ON other.pocketcasts_episode_uuid = pe.uuid AND other.id != ? "
             "WHERE pe.podcast_uuid = ?", (episode_id, episode["pocketcasts_podcast_uuid"])).fetchall()
         candidates = sorted(rows, key=lambda r: (r["taken_by_id"] is not None,
                                                  _days_apart(r["published_at"], episode["published_at"])))
@@ -492,8 +494,13 @@ def sources():
 def add_source():
     campaign_id = request.form.get("campaign_id", "").strip()
     collection_id = request.form.get("collection_id", "").strip()
-    label = request.form.get("label", "").strip() or f"Campaign {campaign_id} / collection {collection_id}"
-    if not (campaign_id.isdigit() and collection_id.isdigit()):
+    if collection_id == "all":
+        collection_id = ""
+    default_label = (f"Campaign {campaign_id} / all posts" if not collection_id
+                     else f"Campaign {campaign_id} / collection {collection_id}")
+    label = (request.form.get("label", "").strip() or request.form.get("default_label", "").strip()
+             or default_label)
+    if not campaign_id.isdigit() or (collection_id and not collection_id.isdigit()):
         flash("Campaign and collection IDs must be numbers.", "error")
         return redirect(url_for("main.sources", campaign_id=campaign_id))
     db = get_db()
@@ -513,6 +520,22 @@ def toggle_source(source_id: int):
     db = get_db()
     with db:
         db.execute("UPDATE sources SET enabled = 1 - enabled WHERE id = ?", (source_id,))
+    return redirect(url_for("main.sources"))
+
+
+@bp.post("/sources/<int:source_id>/widen")
+def widen_source_route(source_id: int):
+    db = get_db()
+    try:
+        widen_source(db, source_id)
+    except MatchError as exc:
+        flash(str(exc), "error")
+        return redirect(url_for("main.sources"))
+    others = db.execute(
+        "SELECT COUNT(*) FROM sources WHERE id != ? AND enabled = 1 AND campaign_id = "
+        "(SELECT campaign_id FROM sources WHERE id = ?)", (source_id, source_id)).fetchone()[0]
+    flash("Now covers every post in the campaign. Existing matches are kept; press “Refresh” to pull in the rest."
+          + (" Disable the other sources for this campaign so posts aren't counted twice." if others else ""), "ok")
     return redirect(url_for("main.sources"))
 
 

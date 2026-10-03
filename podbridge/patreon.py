@@ -68,7 +68,7 @@ class Collection:
 
 class PatreonClient(Protocol):
     def check_session(self) -> bool: ...
-    def list_posts(self, campaign_id: str, collection_id: str) -> list[Post]: ...
+    def list_posts(self, campaign_id: str, collection_id: str | None) -> list[Post]: ...
     def list_collections(self, campaign_id: str) -> list[Collection]: ...
 
 
@@ -176,18 +176,25 @@ class HttpPatreonClient:
         data = _dig(body, "data")
         return isinstance(data, dict) and bool(data.get("id")) and data.get("type") == "user"
 
-    def list_posts(self, campaign_id: str, collection_id: str) -> list[Post]:
+    def list_posts(self, campaign_id: str, collection_id: str | None) -> list[Post]:
+        """One collection, or every post in the campaign when collection_id is empty/None."""
         params = {
             "fields[post]": POST_FIELDS,
             "filter[campaign_id]": campaign_id,
-            "filter[collection_id]": collection_id,
             "filter[is_suspended]": "false",
             "filter[include_drops]": "true",
             "filter[is_published]": "true",
-            "sort": "collection_order",
             "page[size]": str(PAGE_SIZE),
             **JSONAPI,
         }
+        if collection_id:
+            params["filter[collection_id]"] = collection_id
+            params["sort"] = "collection_order"
+        else:
+            # Same filters the creator page uses for its post feed.
+            params["filter[contains_exclusive_posts]"] = "true"
+            params["filter[is_draft]"] = "false"
+            params["sort"] = "-published_at"
         posts: list[Post] = []
         for _ in range(MAX_PAGES):
             status, body = self._get("/api/posts", params)
