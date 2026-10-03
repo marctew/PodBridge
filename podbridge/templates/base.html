@@ -8,7 +8,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="PodBridge">
   <title>{% block title %}PodBridge{% endblock %} · PodBridge</title>
-  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css', v=asset_version) }}">
 </head>
 <body class="{{ 'signed-in' if session.auth else '' }}">
   {% if session.auth %}
@@ -49,6 +49,7 @@
   <dialog id="open-with" aria-labelledby="open-with-title">
     <p class="eyebrow">Open with</p>
     <h2 id="open-with-title"></h2>
+    <p class="muted" id="open-with-position"></p>
     <div class="open-with-choices">
       <a class="button" id="open-with-video" rel="noopener"></a>
       <a class="button secondary-button" id="open-with-pc" rel="noopener"></a>
@@ -81,7 +82,7 @@
       if (!sheet || typeof sheet.showModal !== "function") return;
       var video = document.getElementById("open-with-video");
       var pc = document.getElementById("open-with-pc");
-      var at = function (pos) { return pos ? " at " + pos : ""; };
+      var position = document.getElementById("open-with-position");
       var setLink = function (link, desktopUrl, iosUrl) {
         link.href = ios ? (iosUrl || desktopUrl) : desktopUrl;
         if (ios) link.removeAttribute("target"); else link.target = "_blank";
@@ -92,10 +93,11 @@
         ev.preventDefault();
         var d = a.dataset;
         document.getElementById("open-with-title").textContent = d.title;
+        position.textContent = d.position ? "Resume at " + d.position : "From the start";
         setLink(video, d.videoUrl, d.videoDirect);
-        video.textContent = "▶ Watch on " + d.videoLabel + at(d.position);
+        video.textContent = "▶ Watch on " + d.videoLabel;
         setLink(pc, d.pcUrl, d.pcDirect);
-        pc.textContent = "🎧 Listen in Pocket Casts" + at(d.position);
+        pc.textContent = "🎧 Listen in Pocket Casts";
         sheet.showModal();
       });
       [video, pc].forEach(function (link) {

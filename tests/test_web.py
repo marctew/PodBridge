@@ -98,6 +98,12 @@ def test_webhook_must_be_http(authed):
     assert "http(s) URL" in html
 
 
+def test_stylesheet_url_is_versioned(client):
+    import re
+    html = client.get("/login").get_data(as_text=True)
+    assert re.search(r'href="/static/style\.css\?v=[0-9a-f]{10}"', html)
+
+
 def test_dashboard_renders(authed):
     html = authed.get("/").get_data(as_text=True)
     assert "Dry run is on" in html

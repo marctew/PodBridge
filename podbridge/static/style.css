@@ -243,24 +243,25 @@ input[type=search] {
 .backfill { margin: .25rem 0 .75rem; align-items: center; }
 .flash-inline.bad { color: var(--bad); font-size: .875rem; }
 /* "Open with…" sheet */
+/* Spelled out in full (position, margins, sizing) rather than relying on each browser's
+   built-in dialog styles, which differ: Safari's are a black box with a white border. */
 dialog#open-with {
-  border: 1px solid var(--border); border-radius: 12px; padding: 1.25rem;
-  width: min(92vw, 420px); background: var(--surface); color: var(--text);
+  position: fixed; inset: 0; margin: auto; height: fit-content; max-height: 90vh;
+  width: min(92vw, 420px); box-sizing: border-box; overflow: auto;
+  border: 1px solid var(--border); border-radius: 14px; padding: 1.25rem;
+  background: var(--surface); color: var(--text); text-align: center;
   box-shadow: 0 20px 60px rgba(0, 0, 0, .5);
 }
-dialog#open-with::backdrop { background: rgba(0, 0, 0, .6); }
-dialog#open-with h2 { margin: 0 0 1rem; font-size: 1.05rem; line-height: 1.35; }
-dialog#open-with .eyebrow { margin-bottom: .3rem; }
-.open-with-choices { display: grid; gap: .6rem; margin-bottom: .75rem; }
-.open-with-choices .button { text-align: center; padding: .75rem 1rem; }
+dialog#open-with::backdrop { background: rgba(0, 0, 0, .65); }
+dialog#open-with .eyebrow { margin: 0 0 .3rem; }
+dialog#open-with h2 { display: block; margin: 0 0 .3rem; font-size: 1.1rem; line-height: 1.35; }
+#open-with-position { margin: 0 0 1.1rem; }
+.open-with-choices { display: grid; grid-template-columns: 1fr; gap: .6rem; margin-bottom: .6rem; }
+.open-with-choices .button { display: block; width: 100%; box-sizing: border-box; text-align: center;
+  padding: .8rem 1rem; min-height: 48px; font-size: 1rem; }
 a.button.secondary-button { background: transparent; color: var(--text); border: 1px solid var(--border); }
 a.button.secondary-button:hover { border-color: var(--muted); }
-#open-with-cancel { width: 100%; text-align: center; padding: .5rem; }
-@media (max-width: 640px) {
-  /* Bottom sheet on phones */
-  dialog#open-with { width: 100%; max-width: none; margin: auto 0 0; border-radius: 16px 16px 0 0;
-    padding-bottom: calc(1.25rem + env(safe-area-inset-bottom)); }
-}
+#open-with-cancel { display: block; width: 100%; text-align: center; padding: .6rem; min-height: 44px; }
 
 a.pc-link { color: var(--muted); text-decoration: none; white-space: nowrap; }
 a.pc-link:hover { color: var(--text); }
