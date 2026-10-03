@@ -228,3 +228,11 @@ img.art.fallback { object-fit: contain; }
 }
 
 .status-grid { margin-top: .5rem; }
+
+.filter-bar { display: flex; gap: .75rem; align-items: center; padding: 0 1.25rem .75rem; flex-wrap: wrap; }
+.filter-bar input { flex: 1; min-width: 12rem; max-width: 28rem; }
+input[type=search] {
+  padding: .5rem .6rem; background: var(--bg); color: var(--text);
+  border: 1px solid var(--border); border-radius: 6px; font: inherit;
+}
+.table-card > p[hidden] { display: none; }

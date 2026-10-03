@@ -35,12 +35,18 @@
   {% if candidates %}
   <p class="muted">{{ 'Closest publish date first' if episode.published_at else 'Most similar title first' }}.
     Episodes already matched elsewhere are listed last.</p>
+  <div class="filter-bar">
+    <label for="candidate-filter" class="sr-only">Filter Pocket Casts episodes</label>
+    <input id="candidate-filter" type="search" placeholder="Filter by title, e.g. putney" autocomplete="off">
+    <span id="candidate-count" class="muted" aria-live="polite">{{ candidates | length }} episodes</span>
+  </div>
   <div class="table-wrap">
-    <table>
+    <table id="candidates">
       <thead><tr><th>Title</th><th>Published</th><th class="num">Length</th><th></th></tr></thead>
       <tbody>
       {% for c in candidates %}
-        <tr {% if c.uuid == episode.pocketcasts_episode_uuid %}class="current"{% endif %}>
+        <tr {% if c.uuid == episode.pocketcasts_episode_uuid %}class="current"{% endif %}
+            data-search="{{ (c.title ~ ' ' ~ (c.podcast_title or '')) | lower }}">
           <td>{{ c.title }}{% if several_podcasts %}<span class="muted match-podcast">{{ c.podcast_title or c.podcast_uuid[:8] }}</span>{% endif %}</td>
           <td class="nowrap">{{ c.published_at | localtime(date_only=True) }}</td>
           <td class="num">{{ c.duration_secs | hms }}</td>
@@ -61,6 +67,30 @@
       </tbody>
     </table>
   </div>
+  <p id="candidate-empty" class="muted" hidden>No episodes match that filter.</p>
+  <script>
+    (function () {
+      const input = document.getElementById("candidate-filter");
+      const rows = Array.from(document.querySelectorAll("#candidates tbody tr"));
+      const count = document.getElementById("candidate-count");
+      const empty = document.getElementById("candidate-empty");
+      // Fold accents, curly quotes and dashes so "pierres" finds "Pierre’s".
+      const fold = (s) => s.normalize("NFKD").replace(/[̀-ͯ]/g, "")
+                           .replace(/[‘’“”'"]/g, "").replace(/[–—]/g, "-").toLowerCase();
+      rows.forEach((row) => { row.dataset.search = fold(row.dataset.search || ""); });
+      input.addEventListener("input", () => {
+        const words = fold(input.value).split(/\s+/).filter(Boolean);
+        let shown = 0;
+        rows.forEach((row) => {
+          const hit = words.every((w) => row.dataset.search.includes(w));
+          row.hidden = !hit;
+          if (hit) shown += 1;
+        });
+        count.textContent = words.length ? `${shown} of ${rows.length} episodes` : `${rows.length} episodes`;
+        empty.hidden = shown > 0;
+      });
+    })();
+  </script>
   {% else %}
     <p class="muted">No Pocket Casts episodes loaded for this source. Link a podcast on the Sources page, then press “Refresh”.</p>
   {% endif %}
