@@ -2,17 +2,33 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#141516">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="PodBridge">
   <title>{% block title %}PodBridge{% endblock %} · PodBridge</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
-<body>
+<body class="{{ 'signed-in' if session.auth else '' }}">
   {% if session.auth %}
+  {# Icons: simple 24px strokes, drawn with currentColor so they follow the link colour. #}
+  {% set icons = {
+    'main.dashboard': '<path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/>',
+    'main.library_page': '<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>',
+    'main.episodes': '<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/>',
+    'main.activity': '<path d="M3 12h4l3-8 4 16 3-8h4"/>',
+    'main.sources': '<path d="M4 6h16M4 12h16M4 18h10"/>',
+    'main.settings': '<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/>',
+  } %}
   <header class="topbar">
     <a class="brand" href="{{ url_for('main.dashboard') }}">PodBridge</a>
-    <nav>
+    <nav class="mainnav" aria-label="Main">
       {% for endpoint, label in [('main.dashboard', 'Home'), ('main.library_page', 'Library'), ('main.episodes', 'Matching'), ('main.activity', 'Activity'), ('main.sources', 'Sources'), ('main.settings', 'Settings')] %}
-        <a href="{{ url_for(endpoint) }}" {% if request.endpoint == endpoint %}aria-current="page"{% endif %}>{{ label }}</a>
+        <a href="{{ url_for(endpoint) }}" {% if request.endpoint == endpoint %}aria-current="page"{% endif %}>
+          <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true">{{ icons[endpoint] | safe }}</svg>
+          <span>{{ label }}</span>
+        </a>
       {% endfor %}
     </nav>
     <form method="post" action="{{ url_for('auth.logout') }}" class="logout">

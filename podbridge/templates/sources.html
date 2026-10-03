@@ -5,14 +5,14 @@
 
 <section class="card table-card">
   <div class="table-wrap">
-    <table>
+    <table class="stack">
       <thead><tr><th>Label</th><th>Campaign / channel</th><th>Covers</th><th class="num">Episodes</th><th class="num">Matched</th><th>Pocket Casts podcast</th><th></th></tr></thead>
       <tbody>
       {% for s in sources %}
         <tr {% if not s.enabled %}class="disabled"{% endif %}>
-          <td>{{ s.label }}</td>
-          <td class="mono">{{ s.campaign_id }}</td>
-          <td class="nowrap">
+          <td class="cell-title">{{ s.label }}</td>
+          <td class="mono" data-label="Campaign / channel">{{ s.campaign_id }}</td>
+          <td class="nowrap" data-label="Covers">
             {% if s.kind == 'youtube' %}YouTube channel
             {% elif s.collection_id %}<span class="mono">Collection {{ s.collection_id }}</span>
               <form method="post" action="{{ url_for('main.widen_source_route', source_id=s.id) }}" class="inline-form">
@@ -21,14 +21,14 @@
               </form>
             {% else %}All posts{% endif %}
           </td>
-          <td class="num">{{ s.episode_count }}</td>
-          <td class="num">{{ s.matched_count }}</td>
-          <td class="nowrap">
+          <td class="num" data-label="Episodes">{{ s.episode_count }}</td>
+          <td class="num" data-label="Matched">{{ s.matched_count }}</td>
+          <td class="nowrap wrap-mobile" data-label="Pocket Casts">
             {% if s.pocketcasts_podcast_uuid %}{{ s.podcast_names or 'Linked' }} ·
               <a href="{{ url_for('main.link_source_form', source_id=s.id) }}">Change</a>
             {% else %}<a href="{{ url_for('main.link_source_form', source_id=s.id) }}">Link podcast</a>{% endif %}
           </td>
-          <td>
+          <td class="cell-actions">
             <form method="post" action="{{ url_for('main.toggle_source', source_id=s.id) }}">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
               <button type="submit" class="link">{{ 'Disable' if s.enabled else 'Enable' }}</button>

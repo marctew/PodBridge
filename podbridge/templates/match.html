@@ -41,16 +41,16 @@
     <span id="candidate-count" class="muted" aria-live="polite">{{ candidates | length }} episodes</span>
   </div>
   <div class="table-wrap">
-    <table id="candidates">
+    <table id="candidates" class="stack">
       <thead><tr><th>Title</th><th>Published</th><th class="num">Length</th><th></th></tr></thead>
       <tbody>
       {% for c in candidates %}
         <tr {% if c.uuid == episode.pocketcasts_episode_uuid %}class="current"{% endif %}
             data-search="{{ (c.title ~ ' ' ~ (c.podcast_title or '')) | lower }}">
-          <td>{{ c.title }}{% if several_podcasts %}<span class="muted match-podcast">{{ c.podcast_title or c.podcast_uuid[:8] }}</span>{% endif %}</td>
-          <td class="nowrap">{{ c.published_at | localtime(date_only=True) }}</td>
-          <td class="num">{{ c.duration_secs | hms }}</td>
-          <td class="nowrap">
+          <td class="cell-title">{{ c.title }}{% if several_podcasts %}<span class="muted match-podcast">{{ c.podcast_title or c.podcast_uuid[:8] }}</span>{% endif %}</td>
+          <td class="nowrap" data-label="Published">{{ c.published_at | localtime(date_only=True) }}</td>
+          <td class="num" data-label="Length">{{ c.duration_secs | hms }}</td>
+          <td class="nowrap wrap-mobile cell-actions">
             {% if c.uuid == episode.pocketcasts_episode_uuid %}<span class="badge badge-ok">Current</span>
             {% elif c.taken_by_id %}
               <span class="muted">Matched to “{{ c.taken_by_title }}”</span>
@@ -64,7 +64,7 @@
             {% else %}
               <form method="post">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <input type="hidden" name="next" value="{{ back }}">
+                <input type="hidden" name="next" value="{{ back }}">
                 <input type="hidden" name="uuid" value="{{ c.uuid }}">
                 <button type="submit" class="link accent">Use this</button>
               </form>

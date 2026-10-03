@@ -16,7 +16,7 @@
       {% if up_next %}
         <a class="button" href="{{ url_for('main.go_episode', episode_id=up_next.id) }}" target="_blank" rel="noopener"
            data-direct="{{ up_next.resume_url }}">
-          ▶ Continue “{{ up_next.title | truncate(48) }}” at {{ up_next.resume.position_secs | hms }}</a>
+          ▶ Continue <span class="hide-mobile">“{{ up_next.title | truncate(48) }}”</span> at {{ up_next.resume.position_secs | hms }}</a>
       {% endif %}
     </div>
   </div>

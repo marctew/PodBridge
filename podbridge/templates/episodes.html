@@ -1,8 +1,8 @@
 {% extends "base.html" %}
-{% block title %}Episodes{% endblock %}
+{% block title %}Matching{% endblock %}
 {% block content %}
 <div class="page-head">
-  <h1>Episodes</h1>
+  <h1>Matching</h1>
   <form method="post" action="{{ url_for('main.refresh_episodes') }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <button type="submit" class="secondary">Refresh</button>
@@ -25,14 +25,14 @@
     {% endif %}
     {% if rows %}
     <div class="table-wrap">
-      <table>
+      <table class="stack">
         <thead>
           <tr><th>Title</th><th>Published</th><th class="num">Length</th><th>{{ 'YouTube' if source.kind == 'youtube' else 'Patreon' }}</th><th>Pocket Casts</th><th>Match</th></tr>
         </thead>
         <tbody>
         {% for e in rows %}
           <tr>
-            <td>
+            <td class="cell-title">
               {% if e.patreon_url %}<a href="{{ e.patreon_url }}" target="_blank" rel="noopener">{{ e.title }}</a>{% else %}{{ e.title }}{% endif %}
               {% if e.resume_url and e.resume.position_secs > 0 %}
                 <a class="resume" href="{{ url_for('main.go_episode', episode_id=e.id) }}" target="_blank" rel="noopener"
@@ -40,22 +40,22 @@
                    title="Opens {{ e.source_name }} at the further of the two positions">Continue on {{ e.source_name }} at {{ e.resume.position_secs | hms }}</a>
               {% endif %}
             </td>
-            <td class="nowrap">{{ e.published_at | localtime(date_only=True) }}</td>
-            <td class="num">{{ e.duration_secs | hms }}</td>
-            <td class="nowrap">
+            <td class="nowrap" data-label="Published">{{ e.published_at | localtime(date_only=True) }}</td>
+            <td class="num" data-label="Length">{{ e.duration_secs | hms }}</td>
+            <td class="nowrap" data-label="{{ 'YouTube' if source.kind == 'youtube' else 'Patreon' }}">
               {% if e.patreon_is_watched %}<span class="badge badge-ok">Watched</span>
                 {%- if e.patreon_position_secs and e.duration_secs and e.patreon_position_secs < e.duration_secs - 5 %}
                   <span class="muted">at {{ e.patreon_position_secs | hms }}</span>{% endif %}
               {% elif e.patreon_watch_state == 'is_watching' %}<span class="badge badge-progress">{{ e.patreon_position_secs | hms }}</span>
               {% else %}<span class="muted">Not started</span>{% endif %}
             </td>
-            <td class="nowrap">
+            <td class="nowrap" data-label="Pocket Casts">
               {% if e.match_method == 'none' %}<span class="muted">–</span>
               {% elif e.pocketcasts_status == 3 %}<span class="badge badge-ok">Played</span>
               {% elif e.pocketcasts_status == 2 %}<span class="badge badge-progress">{{ e.pocketcasts_position_secs | hms }}</span>
               {% else %}<span class="muted">Not started</span>{% endif %}
             </td>
-            <td class="nowrap">
+            <td class="nowrap" data-label="Match">
               {% if source.pocketcasts_podcast_uuid %}
                 <a class="match-link" href="{{ url_for('main.match_episode', episode_id=e.id, next=request.full_path.rstrip('?') ~ '#source-' ~ source.id) }}">
                   {% if e.match_method != 'none' %}{{ method_labels[e.match_method] }}
