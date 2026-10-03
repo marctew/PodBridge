@@ -54,6 +54,11 @@ def store_catalogue(conn: sqlite3.Connection, podcast_uuid: str, catalogue, stat
         )
 
 
+def reset_sync_marker(conn: sqlite3.Connection, episode_id: int) -> None:
+    """A match changed, so the next run must re-evaluate this episode even if Patreon hasn't changed."""
+    conn.execute("UPDATE progress SET synced_patreon_updated_at = NULL WHERE episode_id = ?", (episode_id,))
+
+
 def apply_pocketcasts_state(conn: sqlite3.Connection, episode_id: int, status: int | None,
                             position: float | None) -> None:
     conn.execute(
@@ -97,6 +102,7 @@ def auto_match_source(conn: sqlite3.Connection, source: sqlite3.Row) -> int:
             "UPDATE episodes SET pocketcasts_episode_uuid = ?, match_method = ?, updated_at = ? WHERE id = ?",
             (uuid, method, utcnow(), episode_id),
         )
+        reset_sync_marker(conn, episode_id)
     return len(matches)
 
 
@@ -144,7 +150,8 @@ def link_source(conn: sqlite3.Connection, source_id: int, podcast_uuid: str) -> 
             "UPDATE episodes SET pocketcasts_episode_uuid = NULL, match_method = 'none', match_locked = 0 "
             "WHERE source_id = ?", (source_id,))
         conn.execute(
-            "UPDATE progress SET pocketcasts_status = NULL, pocketcasts_position_secs = NULL "
+            "UPDATE progress SET pocketcasts_status = NULL, pocketcasts_position_secs = NULL, "
+            "synced_patreon_updated_at = NULL "
             "WHERE episode_id IN (SELECT id FROM episodes WHERE source_id = ?)", (source_id,))
 
 
@@ -167,6 +174,7 @@ def set_manual_match(conn: sqlite3.Connection, episode_id: int, uuid: str) -> No
             "UPDATE episodes SET pocketcasts_episode_uuid = ?, match_method = 'manual', match_locked = 0, "
             "updated_at = ? WHERE id = ?", (uuid, utcnow(), episode_id))
         apply_pocketcasts_state(conn, episode_id, candidate["playing_status"], candidate["played_up_to"])
+        reset_sync_marker(conn, episode_id)
 
 
 def unlink(conn: sqlite3.Connection, episode_id: int) -> None:
@@ -176,6 +184,7 @@ def unlink(conn: sqlite3.Connection, episode_id: int) -> None:
             "UPDATE episodes SET pocketcasts_episode_uuid = NULL, match_method = 'none', match_locked = 1, "
             "updated_at = ? WHERE id = ?", (utcnow(), episode_id))
         apply_pocketcasts_state(conn, episode_id, None, None)
+        reset_sync_marker(conn, episode_id)
 
 
 def allow_auto_match(conn: sqlite3.Connection, episode_id: int) -> None:

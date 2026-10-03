@@ -15,7 +15,7 @@ def use_pc(app, client) -> None:
 
 
 def configure_pc(authed):
-    post(authed, "/settings", page="/settings", sync_interval_minutes="15",
+    post(authed, "/settings", page="/settings", sync_interval_minutes="15", dry_run="1",
          pocketcasts_email="me@example.com", pocketcasts_password="pw-123456")
 
 

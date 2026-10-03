@@ -26,13 +26,20 @@
       <dt>Last run</dt>
       <dd>
         {% if last_run %}
-          {{ last_run.started_at | localtime }} · {{ last_run.status }}
-          · {{ last_run.episodes_updated }}/{{ last_run.episodes_checked }} updated
+          <a href="{{ url_for('main.activity') }}">{{ last_run.started_at | localtime }}</a>
+          · <span class="run-{{ last_run.status }}">{{ last_run.status }}</span>
+          · {{ last_run.episodes_updated }} written{% if last_run.dry_run %} (dry run){% endif %}
         {% else %}<span class="muted">No runs yet</span>{% endif %}
       </dd>
       <dt>Interval</dt><dd>Every {{ interval }} minutes</dd>
-      <dt>Next run</dt><dd><span class="muted">Scheduler not built yet</span></dd>
+      <dt>Next run</dt>
+      <dd>{% if next_run %}{{ next_run | localtime }}{% elif scheduler_on %}<span class="muted">Pending</span>{% else %}<span class="muted">Scheduler off</span>{% endif %}</dd>
     </dl>
+    <form method="post" action="{{ url_for('main.sync_now') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button type="submit">Sync now</button>
+      <span class="muted">Restarts the {{ interval }}-minute countdown.</span>
+    </form>
   </section>
 
   <section class="card">

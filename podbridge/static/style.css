@@ -106,3 +106,22 @@ a.match-link { color: var(--text); text-decoration: underline dotted var(--muted
 button.link.accent { color: var(--accent); }
 tr.current td { background: rgba(63, 185, 80, .08); }
 .actions { margin-bottom: 1rem; }
+
+.run-ok { color: var(--ok); }
+.run-error, .run-aborted { color: var(--bad); }
+.run-running { color: var(--warn); }
+.runs { padding: 0; }
+.runs details { border-top: 1px solid var(--border); }
+.runs details:first-child { border-top: 0; }
+.runs summary { display: flex; flex-wrap: wrap; gap: .4rem .9rem; align-items: center; padding: .7rem 1.25rem; cursor: pointer; }
+.runs summary::marker { color: var(--muted); }
+.run-counts { margin-left: auto; color: var(--muted); font-size: .875rem; }
+.runs details > p { margin: 0 1.25rem .8rem; }
+.events { list-style: none; margin: 0; padding: 0 1.25rem .9rem; display: grid; gap: .35rem; font-size: .9rem; }
+.events li { display: grid; grid-template-columns: 11rem 1fr; gap: .1rem 1rem; }
+.events li .muted { grid-column: 2; }
+.event-action { color: var(--muted); }
+.ev-set_position, .ev-mark_played { color: var(--ok); }
+.ev-no_match { color: var(--warn); }
+@media (max-width: 560px) { .events li { grid-template-columns: 1fr; } .events li .muted { grid-column: 1; } }
+.card form .muted { margin-left: .6rem; }

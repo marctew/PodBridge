@@ -17,6 +17,8 @@ from .linking import (
 )
 from .patreon import PatreonBlocked, PatreonError, PatreonSessionExpired
 from .pocketcasts import PocketCastsAuthError, PocketCastsBlocked, PocketCastsError
+from .scheduler import next_run_at, restart_countdown, run_sync_now, scheduler_running
+from .sync import SyncBusy
 from .services import NotConfigured, patreon_client, pocketcasts_client, pocketcasts_configured, pocketcasts_tokens
 from .settings_store import MAX_INTERVAL_MINUTES, MIN_INTERVAL_MINUTES, SettingsStore, get_store
 
@@ -114,14 +116,57 @@ def dashboard():
         interval=store.get_int("sync_interval_minutes"),
         last_run=last_run,
         counts=counts,
+        next_run=next_run_at(),
+        scheduler_on=scheduler_running(),
     )
+
+
+@bp.post("/sync")
+def sync_now():
+    """Manual sync. Afterwards the automatic countdown restarts from a full interval."""
+    try:
+        summary = run_sync_now("manual")
+    except SyncBusy:
+        flash("A sync is already running. Try again in a moment.", "warn")
+    except NotConfigured as exc:
+        flash(str(exc), "error")
+    except SecretError:
+        flash("Stored credentials can't be decrypted (was ENCRYPTION_KEY changed?). Re-enter them.", "error")
+    else:
+        restart_countdown()
+        if summary.status == "ok":
+            parts = [f"{n} {action.replace('_', ' ')}" for action, n in sorted(summary.actions.items())]
+            flash(f"Sync {'(dry run) ' if summary.dry_run else ''}done: {summary.checked} checked, "
+                  f"{summary.updated} written to Pocket Casts" + (f" · {', '.join(parts)}" if parts else ""), "ok")
+        else:
+            flash(f"Sync {summary.status}: {summary.error}", "error")
+    nxt = request.form.get("next")
+    return redirect(safe_next(nxt) if nxt else url_for("main.dashboard"))
+
+
+@bp.get("/activity")
+def activity():
+    db = get_db()
+    runs = db.execute("SELECT * FROM sync_runs ORDER BY id DESC LIMIT 50").fetchall()
+    events: dict[int, list] = {r["id"]: [] for r in runs}
+    if runs:
+        rows = db.execute(
+            "SELECT ev.*, e.title FROM sync_events ev LEFT JOIN episodes e ON e.id = ev.episode_id "
+            f"WHERE ev.run_id IN ({','.join('?' * len(runs))}) ORDER BY ev.id",
+            [r["id"] for r in runs]).fetchall()
+        for row in rows:
+            events[row["run_id"]].append(row)
+    return render_template("activity.html", runs=runs, events=events)
 
 
 @bp.route("/settings", methods=["GET", "POST"])
 def settings():
     store = get_store()
     if request.method == "POST":
+        old_interval = store.get_int("sync_interval_minutes")
         errors = save_settings(store, request.form)
+        if store.get_int("sync_interval_minutes") != old_interval:
+            restart_countdown()
         for error in errors:
             flash(error, "error")
         if not errors:

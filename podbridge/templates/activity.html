@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}Activity{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>Activity</h1>
+  <form method="post" action="{{ url_for('main.sync_now') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="next" value="{{ url_for('main.activity') }}">
+    <button type="submit">Sync now</button>
+  </form>
+</div>
+
+{% set action_labels = {'set_position': 'Set position', 'mark_played': 'Mark played', 'skipped_behind': 'Skipped: not ahead',
+                        'skipped_played': 'Skipped: already played', 'skipped_unchanged': 'Skipped: unchanged', 'no_match': 'No match'} %}
+{% if runs %}
+<section class="card runs">
+  {% for run in runs %}
+    {% set evs = events[run.id] %}
+    <details {% if loop.first and evs %}open{% endif %}>
+      <summary>
+        <span class="nowrap">{{ run.started_at | localtime }}</span>
+        <span class="badge run-badge run-{{ run.status }}">{{ run.status }}</span>
+        <span class="muted">{{ run.tier }}{% if run.dry_run %} · dry run{% endif %}</span>
+        <span class="run-counts">{{ run.episodes_checked }} checked · {{ run.episodes_updated }} written · {{ evs | length }} event{{ '' if evs | length == 1 else 's' }}</span>
+      </summary>
+      {% if run.error %}<p class="flash flash-error">{{ run.error }}</p>{% endif %}
+      {% if evs %}
+      <ul class="events">
+        {% for ev in evs %}
+          <li><span class="event-action ev-{{ ev.action }}">{{ action_labels.get(ev.action, ev.action) }}</span>
+              <span>{{ ev.title or 'Deleted episode' }}</span>
+              <span class="muted">{{ ev.detail }}</span></li>
+        {% endfor %}
+      </ul>
+      {% elif not run.error %}
+        <p class="muted">Nothing changed on Patreon since the last run.</p>
+      {% endif %}
+    </details>
+  {% endfor %}
+</section>
+{% else %}
+  <p class="muted">No sync runs yet. Press “Sync now”, or wait for the scheduler.</p>
+{% endif %}
+{% endblock %}

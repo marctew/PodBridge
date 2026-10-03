@@ -8,7 +8,7 @@ from zoneinfo import ZoneInfo
 from flask import Flask
 from werkzeug.middleware.proxy_fix import ProxyFix
 
-from . import auth, db, views
+from . import auth, db, scheduler, views
 from .config import Config
 from .crypto import SecretBox
 from .redact import configure_logging
@@ -55,4 +55,5 @@ def create_app(config: Config | None = None) -> Flask:
     db.init_app(app)
     auth.init_app(app)
     app.register_blueprint(views.bp)
+    scheduler.init_scheduler(app)
     return app

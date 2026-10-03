@@ -28,6 +28,7 @@ class Config:
     tz: str = "Europe/London"
     session_cookie_secure: bool = False
     login_failure_delay: float = 1.0
+    scheduler_enabled: bool = False
 
     @classmethod
     def from_env(cls, env: Mapping[str, str] = os.environ) -> Config:
@@ -41,6 +42,7 @@ class Config:
             database_path=Path(env.get("DATABASE_PATH", "/data/podbridge.db")),
             tz=env.get("TZ", "Europe/London"),
             session_cookie_secure=env.get("SESSION_COOKIE_SECURE", "").lower() in ("1", "true", "yes"),
+            scheduler_enabled=env.get("SCHEDULER_ENABLED", "true").lower() not in ("0", "false", "no"),
         )
         config.validate()
         return config

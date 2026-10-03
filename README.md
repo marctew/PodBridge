@@ -7,8 +7,9 @@ Syncs playback progress from Patreon into Pocket Casts, so a bonus episode watch
 - Patreon discovery
 - the Pocket Casts client
 - automatic and manual episode matching
+- the sync engine with dry run, the scheduler, **Sync now** (which restarts the countdown), and the Activity page
 
-Next is the sync engine (Phase 4). No progress is written to Pocket Casts yet.
+Dry run is on by default. Turn it off in Settings once the Activity log looks right. Next is Phase 4a (resume links) and Phase 5 (alerts and polish).
 
 ## Deploy (Docker Compose)
 
