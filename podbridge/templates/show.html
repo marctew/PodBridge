@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_media.html" import art_img, placeholder, episode_thumb %}
+{% from "_media.html" import art_img, placeholder, episode_thumb, open_with %}
 {% block title %}{{ show.title }}{% endblock %}
 {% block content %}
 {% set method_labels = {'auto_title': 'Title', 'auto_duration': 'Date + length', 'auto_date': 'Fuzzy', 'manual': 'Manual'} %}
@@ -35,6 +35,7 @@
     <li class="ep-row">
       <a class="ep-row-thumb" href="{{ url_for('main.go_episode', episode_id=e.id) if e.state == 'in_progress' else (e.patreon_url or '#') }}"
          {% if e.state == 'in_progress' and e.resume_url %}data-direct="{{ e.resume_url }}"{% endif %}
+         {{ open_with(e, url_for('main.go_episode', episode_id=e.id) if e.state == 'in_progress' else (e.patreon_url or '#')) }}
          target="_blank" rel="noopener" aria-label="Open {{ e.title }}">{{ episode_thumb(e) }}</a>
       <div class="ep-row-body">
         <h3>{{ e.title }}</h3>

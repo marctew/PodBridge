@@ -141,6 +141,20 @@ def test_open_in_pocketcasts_links_on_pages(app, authed):
     assert "https://pocketcasts.com/podcasts/pc-podcast-bb/pc-ep-dad" in matching
 
 
+def test_matched_thumbnails_offer_open_with(app, authed):
+    setup_library(app, authed)
+    home = authed.get("/").get_data(as_text=True)
+    assert 'id="open-with"' in home
+    card = home[home.index('class="ep-card"'):]
+    card = card[:card.index(">")]
+    assert "data-choose" in card
+    assert 'data-pc-url="https://pocketcasts.com/podcasts/pc-podcast-bb/pc-ep-peep"' in card
+    assert 'data-pc-direct="https://pca.st/episode/pc-ep-peep?t=1200"' in card
+    assert 'data-video-label="Patreon"' in card and 'data-position="20:00"' in card
+    show = authed.get("/library/1/pc-podcast-bb").get_data(as_text=True)
+    assert show.count("data-choose data-title=") == 3  # every matched episode's thumbnail
+
+
 def test_home_shelves(app, authed):
     setup_library(app, authed)
     home = authed.get("/").get_data(as_text=True)

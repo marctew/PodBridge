@@ -45,22 +45,64 @@
     {% endwith %}
     {% block content %}{% endblock %}
   </main>
+  {% if session.auth %}
+  <dialog id="open-with" aria-labelledby="open-with-title">
+    <p class="eyebrow">Open with</p>
+    <h2 id="open-with-title"></h2>
+    <div class="open-with-choices">
+      <a class="button" id="open-with-video" rel="noopener"></a>
+      <a class="button secondary-button" id="open-with-pc" rel="noopener"></a>
+    </div>
+    <button type="button" class="link" id="open-with-cancel">Cancel</button>
+  </dialog>
+  {% endif %}
   <script>
-    // iPhone/iPad: open the YouTube or Patreon app. iOS hands a link to an app only when the tap
-    // goes straight to the app's web address (a universal link); a redirect through /go/<id>
-    // keeps it in Safari. So point Continue links at their direct URL (position from the last sync).
     (function () {
       var ua = navigator.userAgent;
       var ios = /iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
-      if (!ios) return;
-      document.documentElement.classList.add("ios");
-      document.querySelectorAll("a[data-direct]").forEach(function (a) {
-        if (!a.dataset.direct) return;
-        a.href = a.dataset.direct;  // YouTube/Patreon at the resume point, or a pca.st link for Pocket Casts
-        a.removeAttribute("target");
+
+      // iPhone/iPad: open the YouTube, Patreon or Pocket Casts app. iOS hands a link to an app only
+      // when the tap goes straight to the app's web address (a universal link); a redirect through
+      // /go/<id> keeps it in Safari. So point links at their direct URL (position from the last sync).
+      if (ios) {
+        document.documentElement.classList.add("ios");
+        document.querySelectorAll("a[data-direct]").forEach(function (a) {
+          if (!a.dataset.direct) return;
+          a.href = a.dataset.direct;
+          a.removeAttribute("target");
+        });
+        document.querySelectorAll('a[href^="https://www.youtube.com/"], a[href^="https://www.patreon.com/"]')
+          .forEach(function (a) { a.removeAttribute("target"); });
+      }
+
+      // "Open with…": thumbnails of matched episodes ask whether to watch the video or listen in
+      // Pocket Casts. Modifier-clicks (open in new tab etc.) skip the sheet.
+      var sheet = document.getElementById("open-with");
+      if (!sheet || typeof sheet.showModal !== "function") return;
+      var video = document.getElementById("open-with-video");
+      var pc = document.getElementById("open-with-pc");
+      var at = function (pos) { return pos ? " at " + pos : ""; };
+      var setLink = function (link, desktopUrl, iosUrl) {
+        link.href = ios ? (iosUrl || desktopUrl) : desktopUrl;
+        if (ios) link.removeAttribute("target"); else link.target = "_blank";
+      };
+      document.addEventListener("click", function (ev) {
+        var a = ev.target.closest("a[data-choose]");
+        if (!a || ev.button !== 0 || ev.metaKey || ev.ctrlKey || ev.shiftKey || ev.altKey) return;
+        ev.preventDefault();
+        var d = a.dataset;
+        document.getElementById("open-with-title").textContent = d.title;
+        setLink(video, d.videoUrl, d.videoDirect);
+        video.textContent = "▶ Watch on " + d.videoLabel + at(d.position);
+        setLink(pc, d.pcUrl, d.pcDirect);
+        pc.textContent = "🎧 Listen in Pocket Casts" + at(d.position);
+        sheet.showModal();
       });
-      document.querySelectorAll('a[href^="https://www.youtube.com/"], a[href^="https://www.patreon.com/"]')
-        .forEach(function (a) { a.removeAttribute("target"); });
+      [video, pc].forEach(function (link) {
+        link.addEventListener("click", function () { setTimeout(function () { sheet.close(); }, 50); });
+      });
+      document.getElementById("open-with-cancel").addEventListener("click", function () { sheet.close(); });
+      sheet.addEventListener("click", function (ev) { if (ev.target === sheet) sheet.close(); });  // backdrop
     })();
   </script>
 </body>

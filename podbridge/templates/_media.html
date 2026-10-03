@@ -23,10 +23,22 @@
   </div>
 {%- endmacro %}
 
+{% macro open_with(e, href) -%}
+  {#- Attributes for the "Open with…" sheet: only when the episode has a Pocket Casts match,
+      otherwise the link just goes to the video. -#}
+  {%- if e.pc_web_url -%}
+    data-choose data-title="{{ e.title }}" data-video-label="{{ e.source_name }}"
+    data-video-url="{{ href }}" data-video-direct="{{ e.resume_url or e.patreon_url or href }}"
+    data-pc-url="{{ e.pc_web_url }}" data-pc-direct="{{ e.pc_app_url }}"
+    data-position="{{ (e.resume.position_secs | hms) if e.resume and e.resume.position_secs > 0 else '' }}"
+  {%- endif -%}
+{%- endmacro %}
+
 {% macro episode_card(e, subtitle) -%}
   {%- set href = url_for('main.go_episode', episode_id=e.id) if e.state == 'in_progress' else (e.patreon_url or url_for('main.episodes')) -%}
   <a class="ep-card" href="{{ href }}" target="_blank" rel="noopener" title="{{ e.title }}"
-     {% if e.state == 'in_progress' and e.resume_url %}data-direct="{{ e.resume_url }}"{% endif %}>
+     {% if e.state == 'in_progress' and e.resume_url %}data-direct="{{ e.resume_url }}"{% endif %}
+     {{ open_with(e, href) }}>
     {{ episode_thumb(e) }}
     <span class="ep-title">{{ e.title }}</span>
     <span class="ep-sub">{{ subtitle }}</span>
