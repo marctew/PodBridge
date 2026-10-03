@@ -22,6 +22,7 @@ SECRET_KEYS = frozenset({
 DEFAULTS = {
     "sync_interval_minutes": "15",
     "dry_run": "1",
+    "patreon_timestamp_param": "t",
 }
 
 MIN_INTERVAL_MINUTES = 5

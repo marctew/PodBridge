@@ -50,6 +50,16 @@
   </section>
 
   <section class="card">
+    <h2>Resume links</h2>
+    <div class="field">
+      <label for="patreon_timestamp_param">Patreon timestamp parameter</label>
+      <input id="patreon_timestamp_param" name="patreon_timestamp_param" type="text" value="{{ timestamp_param }}"
+             autocomplete="off" spellcheck="false">
+      <div class="field-meta"><span class="muted">“Continue on Patreon” links add <code>?{{ timestamp_param }}=&lt;seconds&gt;</code> to the post URL.</span></div>
+    </div>
+  </section>
+
+  <section class="card">
     <h2>Alerts</h2>
     {{ secret_field("alert_webhook_url", "Webhook URL (Home Assistant, ntfy…)", type="url",
                     hint=("Currently posts to " ~ webhook_host) if webhook_host else None) }}

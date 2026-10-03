@@ -125,3 +125,10 @@ tr.current td { background: rgba(63, 185, 80, .08); }
 .ev-no_match { color: var(--warn); }
 @media (max-width: 560px) { .events li { grid-template-columns: 1fr; } .events li .muted { grid-column: 1; } }
 .card form .muted { margin-left: .6rem; }
+
+.card.wide { grid-column: 1 / -1; order: 10; }
+.watching { list-style: none; margin: 0 0 .75rem; padding: 0; display: grid; gap: .45rem; }
+.watching li { display: flex; flex-wrap: wrap; gap: .2rem .8rem; align-items: baseline; }
+.watching a { color: var(--text); font-weight: 500; }
+td a.resume { display: block; margin-top: .15rem; font-size: .8rem; color: var(--accent); }
+code { font-family: ui-monospace, Consolas, monospace; font-size: .85em; }

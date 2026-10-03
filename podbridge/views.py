@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime
 from urllib.parse import urlparse
 
@@ -13,16 +14,19 @@ from .db import get_db, utcnow
 from .discovery import check_patreon_session, discover_all
 from .http import TransportError
 from .linking import (
-    MatchError, allow_auto_match, check_pocketcasts_login, link_source, refresh_all, set_manual_match, unlink,
+    MatchError, allow_auto_match, apply_pocketcasts_state, check_pocketcasts_login, link_source, refresh_all,
+    set_manual_match, unlink,
 )
 from .patreon import PatreonBlocked, PatreonError, PatreonSessionExpired
 from .pocketcasts import PocketCastsAuthError, PocketCastsBlocked, PocketCastsError
+from .resume import TIMESTAMP_PARAM_PATTERN, build_resume_url, last_touched, resume_position
 from .scheduler import next_run_at, restart_countdown, run_sync_now, scheduler_running
 from .sync import SyncBusy
 from .services import NotConfigured, patreon_client, pocketcasts_client, pocketcasts_configured, pocketcasts_tokens
 from .settings_store import MAX_INTERVAL_MINUTES, MIN_INTERVAL_MINUTES, SettingsStore, get_store
 
 bp = Blueprint("main", __name__)
+log = logging.getLogger(__name__)
 
 # Write-only secret fields on the Settings page, and the service whose
 # verification status resets when they change.
@@ -93,6 +97,91 @@ def pocketcasts_failure(store: SettingsStore, exc: Exception) -> str:
     return f"Pocket Casts problem: {exc}"
 
 
+# --- resume links ---
+
+EPISODE_QUERY = (
+    "SELECT e.*, s.pocketcasts_podcast_uuid, s.enabled AS source_enabled, "
+    "p.patreon_position_secs, p.patreon_is_watched, p.patreon_watch_state, p.patreon_updated_at, "
+    "p.pocketcasts_position_secs, p.pocketcasts_status, p.pocketcasts_changed_at, p.last_synced_at "
+    "FROM episodes e JOIN sources s ON s.id = e.source_id LEFT JOIN progress p ON p.episode_id = e.id"
+)
+
+
+def annotate(row, param: str) -> dict:
+    """Row -> dict with resume position, Continue-on-Patreon URL and last-touched time."""
+    ep = dict(row)
+    ep["resume"] = resume_position(ep["patreon_position_secs"], bool(ep["patreon_is_watched"]),
+                                   ep["duration_secs"], ep["pocketcasts_status"], ep["pocketcasts_position_secs"])
+    ep["resume_url"] = (build_resume_url(ep["patreon_url"], ep["resume"].position_secs, param)
+                        if ep["resume"] and ep["patreon_url"] else None)
+    ep["touched"] = last_touched(ep["patreon_updated_at"], ep["pocketcasts_changed_at"])
+    return ep
+
+
+def continue_watching(limit: int | None = 5) -> list[dict]:
+    param = get_store().get("patreon_timestamp_param")
+    rows = get_db().execute(EPISODE_QUERY + " WHERE s.enabled = 1").fetchall()
+    eps = [annotate(r, param) for r in rows]
+    eps = [e for e in eps if e["resume"] and e["resume"].position_secs > 0 and e["resume_url"]]
+    eps.sort(key=lambda e: e["touched"].timestamp() if e["touched"] else 0, reverse=True)
+    return eps[:limit] if limit else eps
+
+
+def refresh_pocketcasts_states(episode_id: int | None = None) -> None:
+    """Fresh Pocket Casts state at click time (spec 9a). Failures fall back to the cached state."""
+    store = get_store()
+    if not pocketcasts_configured(store):
+        return
+    db = get_db()
+    try:
+        client = pocketcasts_client(store)
+        if episode_id is not None:
+            row = db.execute(EPISODE_QUERY + " WHERE e.id = ?", (episode_id,)).fetchone()
+            if row is None or not (row["pocketcasts_episode_uuid"] and row["pocketcasts_podcast_uuid"]):
+                return
+            state = client.get_episode_state(row["pocketcasts_episode_uuid"], row["pocketcasts_podcast_uuid"])
+            if state:
+                with db:
+                    apply_pocketcasts_state(db, episode_id, state.status, state.played_up_to)
+            return
+        sources = db.execute("SELECT id, pocketcasts_podcast_uuid FROM sources WHERE enabled = 1 "
+                             "AND pocketcasts_podcast_uuid IS NOT NULL").fetchall()
+        for source in sources:
+            states = client.episode_states(source["pocketcasts_podcast_uuid"])
+            matched = db.execute("SELECT id, pocketcasts_episode_uuid FROM episodes WHERE source_id = ? "
+                                 "AND pocketcasts_episode_uuid IS NOT NULL", (source["id"],)).fetchall()
+            with db:
+                for ep in matched:
+                    state = states.get(ep["pocketcasts_episode_uuid"])
+                    apply_pocketcasts_state(db, ep["id"], state.status if state else 1,
+                                            state.played_up_to if state else 0.0)
+    except POCKETCASTS_FAILURES as exc:
+        log.warning("Fresh Pocket Casts state unavailable, using cached: %s", type(exc).__name__)
+
+
+@bp.get("/go/latest")
+def go_latest():
+    refresh_pocketcasts_states()
+    eps = continue_watching(limit=1)
+    if not eps:
+        flash("Nothing in progress to continue.", "warn")
+        return redirect(url_for("main.dashboard"))
+    return redirect(eps[0]["resume_url"], code=302)
+
+
+@bp.get("/go/<int:episode_id>")
+def go_episode(episode_id: int):
+    refresh_pocketcasts_states(episode_id)
+    row = get_db().execute(EPISODE_QUERY + " WHERE e.id = ?", (episode_id,)).fetchone()
+    if row is None:
+        abort(404)
+    ep = annotate(row, get_store().get("patreon_timestamp_param"))
+    if not ep["patreon_url"]:
+        flash("This episode has no Patreon link.", "error")
+        return redirect(url_for("main.episodes"))
+    return redirect(ep["resume_url"] or ep["patreon_url"], code=302)
+
+
 # --- dashboard and settings ---
 
 @bp.get("/")
@@ -118,6 +207,7 @@ def dashboard():
         counts=counts,
         next_run=next_run_at(),
         scheduler_on=scheduler_running(),
+        watching=continue_watching(),
     )
 
 
@@ -190,6 +280,7 @@ def settings():
         pocketcasts=connection_status(store, "pocketcasts"),
         interval=store.get_int("sync_interval_minutes"),
         dry_run=store.get_bool("dry_run"),
+        timestamp_param=store.get("patreon_timestamp_param"),
         min_interval=MIN_INTERVAL_MINUTES,
         max_interval=MAX_INTERVAL_MINUTES,
     )
@@ -237,6 +328,13 @@ def save_settings(store: SettingsStore, form) -> list[str]:
         )
 
     store.set("dry_run", "1" if form.get("dry_run") else "0")
+
+    param = form.get("patreon_timestamp_param", "").strip()
+    if param:
+        if TIMESTAMP_PARAM_PATTERN.match(param):
+            store.set("patreon_timestamp_param", param)
+        else:
+            errors.append("Timestamp parameter must be a short name like t or start.")
     return errors
 
 
@@ -277,15 +375,11 @@ def episodes():
     where = EPISODE_FILTERS.get(current, EPISODE_FILTERS["all"])
     db = get_db()
     sources = db.execute("SELECT * FROM sources ORDER BY id").fetchall()
-    rows = db.execute(
-        "SELECT e.*, p.patreon_position_secs, p.patreon_is_watched, p.patreon_watch_state, "
-        "p.patreon_updated_at, p.pocketcasts_position_secs, p.pocketcasts_status, p.last_synced_at "
-        f"FROM episodes e LEFT JOIN progress p ON p.episode_id = e.id WHERE {where} "
-        "ORDER BY e.published_at DESC"
-    ).fetchall()
+    rows = db.execute(f"{EPISODE_QUERY} WHERE {where} ORDER BY e.published_at DESC").fetchall()
+    param = get_store().get("patreon_timestamp_param")
     by_source: dict[int, list] = {s["id"]: [] for s in sources}
     for row in rows:
-        by_source.setdefault(row["source_id"], []).append(row)
+        by_source.setdefault(row["source_id"], []).append(annotate(row, param))
     return render_template("episodes.html", sources=sources, by_source=by_source,
                            filters=list(EPISODE_FILTERS), current=current)
 

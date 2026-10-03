@@ -61,12 +61,20 @@ def reset_sync_marker(conn: sqlite3.Connection, episode_id: int) -> None:
 
 def apply_pocketcasts_state(conn: sqlite3.Connection, episode_id: int, status: int | None,
                             position: float | None) -> None:
+    """Store Pocket Casts state; stamp pocketcasts_changed_at when an already-known state changes
+    (a first sighting has no meaningful time, so it isn't stamped)."""
+    previous = conn.execute("SELECT pocketcasts_status, pocketcasts_position_secs FROM progress "
+                            "WHERE episode_id = ?", (episode_id,)).fetchone()
+    changed = (previous is not None and previous[0] is not None and status is not None
+               and (previous[0], previous[1]) != (status, position))
     conn.execute(
         "INSERT INTO progress (episode_id, pocketcasts_status, pocketcasts_position_secs) VALUES (?, ?, ?) "
         "ON CONFLICT (episode_id) DO UPDATE SET pocketcasts_status = excluded.pocketcasts_status, "
         "pocketcasts_position_secs = excluded.pocketcasts_position_secs",
         (episode_id, status, position),
     )
+    if changed:
+        conn.execute("UPDATE progress SET pocketcasts_changed_at = ? WHERE episode_id = ?", (utcnow(), episode_id))
 
 
 def sync_matched_states(conn: sqlite3.Connection, source_id: int) -> None:

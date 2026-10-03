@@ -32,7 +32,13 @@
         <tbody>
         {% for e in rows %}
           <tr>
-            <td>{% if e.patreon_url %}<a href="{{ e.patreon_url }}" target="_blank" rel="noopener">{{ e.title }}</a>{% else %}{{ e.title }}{% endif %}</td>
+            <td>
+              {% if e.patreon_url %}<a href="{{ e.patreon_url }}" target="_blank" rel="noopener">{{ e.title }}</a>{% else %}{{ e.title }}{% endif %}
+              {% if e.resume_url and e.resume.position_secs > 0 %}
+                <a class="resume" href="{{ url_for('main.go_episode', episode_id=e.id) }}" target="_blank" rel="noopener"
+                   title="Opens Patreon at the further of the two positions">Continue on Patreon at {{ e.resume.position_secs | hms }}</a>
+              {% endif %}
+            </td>
             <td class="nowrap">{{ e.published_at | localtime(date_only=True) }}</td>
             <td class="num">{{ e.duration_secs | hms }}</td>
             <td class="nowrap">

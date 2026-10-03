@@ -42,6 +42,27 @@
     </form>
   </section>
 
+  <section class="card wide">
+    <h2>Continue watching</h2>
+    {% if watching %}
+      <ul class="watching">
+        {% for e in watching %}
+          <li>
+            <a href="{{ url_for('main.go_episode', episode_id=e.id) }}">{{ e.title }}</a>
+            <span class="muted nowrap">
+              {{ e.resume.position_secs | hms }} / {{ e.duration_secs | hms }}
+              · {{ 'Pocket Casts' if e.resume.source == 'pocketcasts' else 'Patreon' }} is ahead
+            </span>
+          </li>
+        {% endfor %}
+      </ul>
+      <p class="muted">Links open Patreon at the further of the two positions. Bookmark
+        <a href="{{ url_for('main.go_latest') }}">{{ url_for('main.go_latest', _external=True) }}</a> to jump straight to the latest one.</p>
+    {% else %}
+      <p class="muted">Nothing in progress.</p>
+    {% endif %}
+  </section>
+
   <section class="card">
     <h2>Library</h2>
     <dl class="kv">
