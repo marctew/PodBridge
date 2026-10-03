@@ -18,7 +18,7 @@
 {% set method_labels = {'auto_title': 'Title', 'auto_duration': 'Date + length', 'auto_date': 'Date', 'manual': 'Manual'} %}
 {% for source in sources %}
   {% set rows = by_source.get(source.id, []) %}
-  <section class="card table-card">
+  <section class="card table-card" id="source-{{ source.id }}">
     <h2>{{ source.label }}{% if not source.enabled %} <span class="badge badge-unknown">Disabled</span>{% endif %}</h2>
     {% if not source.pocketcasts_podcast_uuid %}
       <p class="muted">Not linked to a Pocket Casts podcast. <a href="{{ url_for('main.link_source_form', source_id=source.id) }}">Link it</a>.</p>
@@ -56,7 +56,7 @@
             </td>
             <td class="nowrap">
               {% if source.pocketcasts_podcast_uuid %}
-                <a class="match-link" href="{{ url_for('main.match_episode', episode_id=e.id) }}">
+                <a class="match-link" href="{{ url_for('main.match_episode', episode_id=e.id, next=request.full_path.rstrip('?') ~ '#source-' ~ source.id) }}">
                   {% if e.match_method != 'none' %}{{ method_labels[e.match_method] }}
                   {% elif e.match_locked %}<span class="muted">No match</span>
                   {% else %}<span class="warn-text">Unmatched</span>{% endif %}

@@ -49,7 +49,7 @@
       <ul class="watching">
         {% for e in watching %}
           <li>
-            <a href="{{ url_for('main.go_episode', episode_id=e.id) }}">{{ e.title }}</a>
+            <a href="{{ url_for('main.go_episode', episode_id=e.id) }}" target="_blank" rel="noopener">{{ e.title }}</a>
             <span class="muted nowrap">
               {{ e.resume.position_secs | hms }} / {{ e.duration_secs | hms }}
               · {{ 'Pocket Casts' if e.resume.source == 'pocketcasts' else e.source_name }} is ahead
@@ -58,7 +58,7 @@
         {% endfor %}
       </ul>
       <p class="muted">Links open Patreon or YouTube at the further of the two positions. Bookmark
-        <a href="{{ url_for('main.go_latest') }}">{{ url_for('main.go_latest', _external=True) }}</a> to jump straight to the latest one.</p>
+        <a href="{{ url_for('main.go_latest') }}" target="_blank" rel="noopener">{{ url_for('main.go_latest', _external=True) }}</a> to jump straight to the latest one.</p>
     {% else %}
       <p class="muted">Nothing in progress.</p>
     {% endif %}

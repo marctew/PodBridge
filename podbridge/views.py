@@ -497,12 +497,16 @@ def match_episode(episode_id: int):
     candidates = sorted(rows, key=lambda r: (r["taken_by_id"] is not None,
                                              _days_apart(r["published_at"], episode["published_at"])))
     several = len({r["podcast_uuid"] for r in rows}) > 1
-    return render_template("match.html", episode=episode, candidates=candidates, several_podcasts=several)
+    back = safe_next(request.args.get("next") or url_for("main.episodes"))
+    return render_template("match.html", episode=episode, candidates=candidates, several_podcasts=several,
+                           back=back)
 
 
 @bp.post("/episodes/<int:episode_id>/match")
 def save_match(episode_id: int):
+    """Returns to the list the match page was opened from (e.g. the Unmatched filter)."""
     db = get_db()
+    back = safe_next(request.form.get("next") or url_for("main.episodes"))
     try:
         if request.form.get("action") == "unlink":
             unlink(db, episode_id)
@@ -515,8 +519,8 @@ def save_match(episode_id: int):
             flash("Matched.", "ok")
     except MatchError as exc:
         flash(str(exc), "error")
-        return redirect(url_for("main.match_episode", episode_id=episode_id))
-    return redirect(url_for("main.episodes"))
+        return redirect(url_for("main.match_episode", episode_id=episode_id, next=back))
+    return redirect(back)
 
 
 # --- sources ---

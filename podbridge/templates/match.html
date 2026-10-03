@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Match episode{% endblock %}
 {% block content %}
-<p><a href="{{ url_for('main.episodes') }}">← Episodes</a></p>
+<p><a href="{{ back }}">← Back to the list</a></p>
 <h1>{{ episode.title }}</h1>
 <p class="muted">
   {{ episode.source_label }} · published {{ episode.published_at | localtime }} · {{ episode.duration_secs | hms }}
@@ -13,6 +13,7 @@
   {% if episode.match_method != 'none' or not episode.match_locked %}
   <form method="post">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="next" value="{{ back }}">
     <button type="submit" name="action" value="unlink" class="secondary">
       {{ 'Unlink' if episode.match_method != 'none' else 'Mark as no match' }}
     </button>
@@ -21,6 +22,7 @@
   {% if episode.match_method == 'none' and episode.match_locked %}
   <form method="post">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="next" value="{{ back }}">
     <button type="submit" name="action" value="allow_auto" class="secondary">Allow auto-matching again</button>
   </form>
   {% endif %}
@@ -45,6 +47,7 @@
             {% else %}
               <form method="post">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="next" value="{{ back }}">
                 <input type="hidden" name="uuid" value="{{ c.uuid }}">
                 <button type="submit" class="link accent">Use this</button>
               </form>

@@ -86,5 +86,43 @@ def test_manual_match_flow(app, authed):
     assert "Manual" in html
 
 
+def test_matching_returns_to_the_list_it_came_from(app, authed):
+    from test_web_patreon import use_client as use_patreon
+    use_patreon(app, FakePatreonClient(fixture_posts()))
+    use_pc(app, fake_pocketcasts())
+    configure_pc(authed)
+    post(authed, "/sources/1/link", page="/sources", podcast_uuid="pc-podcast-bb")
+    post(authed, "/episodes/refresh")
+    post(authed, "/episodes/3/match", page="/episodes/3/match", action="unlink")  # make one unmatched...
+    post(authed, "/episodes/3/match", page="/episodes/3/match", action="allow_auto")
+
+    listing = authed.get("/episodes?filter=unmatched").get_data(as_text=True)
+    assert "/episodes/3/match?next=/episodes?filter%3Dunmatched%23source-1" in listing.replace("&amp;", "&")
+    page = authed.get("/episodes/3/match?next=/episodes?filter%3Dunmatched%23source-1")
+    assert 'href="/episodes?filter=unmatched#source-1"' in page.get_data(as_text=True)
+    from conftest import csrf_from
+    token = csrf_from(page)
+    response = authed.post("/episodes/3/match", data={"csrf_token": token, "uuid": "pc-ep-old",
+                                                     "next": "/episodes?filter=unmatched#source-1"})
+    assert response.headers["Location"] == "/episodes?filter=unmatched#source-1"
+    offsite = authed.post("/episodes/3/match", data={"csrf_token": token, "action": "unlink",
+                                                    "next": "//evil.example"})
+    assert offsite.headers["Location"] == "/"
+
+
+def test_continue_watching_opens_in_new_tab(app, authed):
+    from podbridge.patreon import Progress
+    from dataclasses import replace
+    posts = [replace(p, progress=Progress(600.0, False, "is_watching", "2026-10-03T12:00:00+00:00"))
+             if p.post_id == "171048709" else p for p in fixture_posts()]
+    app.extensions["patreon_client_factory"] = lambda _s: FakePatreonClient(posts)
+    use_pc(app, fake_pocketcasts())
+    configure_pc(authed)
+    post(authed, "/sources/1/link", page="/sources", podcast_uuid="pc-podcast-bb")
+    post(authed, "/episodes/refresh")
+    html = authed.get("/").get_data(as_text=True)
+    assert 'href="/go/1" target="_blank" rel="noopener"' in html
+
+
 def test_match_page_404(authed):
     assert authed.get("/episodes/999/match").status_code == 404
