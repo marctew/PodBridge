@@ -44,6 +44,15 @@ Collection size: 64 posts, so a full sweep is 2 requests at `page[size]=50` with
 
 The LXC showed **intermittent DNS failures** (`gaierror`) on hosts that resolved fine moments earlier. The `dns: [1.1.1.1, 8.8.8.8]` line in the compose file is needed. The API clients should also retry on transient DNS and connection errors.
 
+## Patreon's "watched" flag fires early (found 2026-10-03)
+
+Patreon set `is_watched: true` at 40:44 of 47:18 (about 86%). The flag doesn't mean "finished".
+
+**Decision (Marc):** sync the real position.
+- An episode counts as played only when the position is within 60 seconds of the end, or when Patreon says watched but gives no usable position.
+- This amends spec section 7, rule 5 ("Played wins").
+- The rule lives in `podbridge/rules.py`.
+
 ## Still open
 
 - Patreon progress shape for audio posts (needs an audio post with some progress).

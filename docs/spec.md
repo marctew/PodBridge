@@ -174,6 +174,10 @@ Intervals configurable in Settings.
 3. Read current Pocket Casts state for the matched episode.
 4. **Never rewind.** Only write if Patreon's position is ahead of Pocket Casts' by more than 15 seconds.
 5. **Played wins.** If Patreon `is_watched` is true, mark played (status 3). If Pocket Casts already says played, do nothing, whatever Patreon says.
+   *Amended 2026-10-03:* Patreon sets `is_watched` early (seen at 86%). The new rule:
+   - Mark played only when Patreon's position is within 60 s of the end, or when `is_watched` comes with no usable position.
+   - Otherwise sync the position as in progress.
+   - See `podbridge/rules.py`.
 6. Otherwise set status 2 with `position = floor(position_secs)`.
 7. Record a `sync_event` either way, including skips.
 

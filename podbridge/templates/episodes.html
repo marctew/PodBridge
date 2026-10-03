@@ -37,6 +37,8 @@
             <td class="num">{{ e.duration_secs | hms }}</td>
             <td class="nowrap">
               {% if e.patreon_is_watched %}<span class="badge badge-ok">Watched</span>
+                {%- if e.patreon_position_secs and e.duration_secs and e.patreon_position_secs < e.duration_secs - 5 %}
+                  <span class="muted">at {{ e.patreon_position_secs | hms }}</span>{% endif %}
               {% elif e.patreon_watch_state == 'is_watching' %}<span class="badge badge-progress">{{ e.patreon_position_secs | hms }}</span>
               {% else %}<span class="muted">Not started</span>{% endif %}
             </td>
