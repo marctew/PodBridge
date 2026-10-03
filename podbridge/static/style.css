@@ -163,7 +163,11 @@ img.art.fallback { object-fit: contain; }
 .shelf-head a { text-decoration: none; font-size: .875rem; }
 .shelf-row {
   display: grid; grid-auto-flow: column; grid-auto-columns: minmax(220px, 260px);
-  gap: 1rem; overflow-x: auto; padding-bottom: .5rem; scroll-snap-type: x proximity;
+  gap: 1rem; overflow-x: auto; scroll-snap-type: x proximity;
+  /* A scrolling row clips anything outside its box, including the hover ring drawn 2px
+     outside each thumbnail; pad for it, and pull back with a negative margin so cards
+     still line up with the headings. */
+  padding: 6px 6px .6rem; margin: -6px -6px 0; scroll-padding-inline: 6px;
 }
 .shelf-row > * { scroll-snap-align: start; }
 
