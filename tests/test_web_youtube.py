@@ -43,7 +43,7 @@ def test_add_channel_link_refresh_and_resume(app, authed):
     post(authed, "/sources/2/link", page="/sources", podcast_uuid="pc-news")
 
     html = post(authed, "/episodes/refresh").get_data(as_text=True)
-    assert "YouTube · YouTube: The News Agents: 2 watched videos in recent history, 2 new" in html
+    assert "YouTube · YouTube: The News Agents: 0 recent uploads, 2 new" in html
     assert "2 matched (2 new)" in html
     assert "Continue on YouTube at 20:45" in html  # 50% of 41:30
     assert authed.get("/go/latest").headers["Location"].startswith("https://www.youtube.com/watch?v=NewsAgent01&t=1245")

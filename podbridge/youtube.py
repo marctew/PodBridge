@@ -54,6 +54,13 @@ class HistoryItem:
 
 
 @dataclass(frozen=True)
+class PlaylistItem:
+    video_id: str
+    title: str
+    duration_secs: float | None
+
+
+@dataclass(frozen=True)
 class VideoDetails:
     video_id: str
     title: str
@@ -73,6 +80,7 @@ class YouTubeClient(Protocol):
     def history(self) -> list[HistoryItem]: ...
     def video_details(self, video_id: str) -> VideoDetails | None: ...
     def resolve_channel(self, handle_or_id: str) -> Channel | None: ...
+    def channel_videos(self, channel_id: str) -> list[PlaylistItem]: ...
 
 
 def watch_url(video_id: str) -> str:
@@ -195,6 +203,51 @@ def parse_history(data: Any) -> list[HistoryItem]:
     return items
 
 
+_CLOCK = re.compile(r"^(?:(\d+):)?(\d{1,2}):(\d{2})$")
+
+
+def parse_clock(text: str | None) -> float | None:
+    """'1:03:33' / '53:09' -> seconds."""
+    match = _CLOCK.match((text or "").strip())
+    if not match:
+        return None
+    hours, minutes, seconds = (int(g) if g else 0 for g in match.groups())
+    return float(hours * 3600 + minutes * 60 + seconds)
+
+
+def parse_playlist(data: Any) -> list[PlaylistItem]:
+    """Videos on a playlist page (playlistVideoRenderer or lockupViewModel layouts), in playlist order."""
+    items: list[PlaylistItem] = []
+    seen: set[str] = set()
+    for d in _walk(data):
+        if isinstance(d.get("playlistVideoRenderer"), dict):
+            r = d["playlistVideoRenderer"]
+            video_id, title = r.get("videoId"), _text(r.get("title"))
+            length = r.get("lengthSeconds")
+            duration = float(length) if str(length or "").isdigit() else parse_clock(_text(r.get("lengthText")))
+        elif isinstance(d.get("lockupViewModel"), dict):
+            r = d["lockupViewModel"]
+            if r.get("contentType") not in (None, "LOCKUP_CONTENT_TYPE_VIDEO"):
+                continue
+            video_id = r.get("contentId")
+            title = _text(((r.get("metadata") or {}).get("lockupMetadataViewModel") or {}).get("title"))
+            badges = [b.get("text") for b in _walk(r.get("contentImage")) if isinstance(b.get("text"), str)]
+            duration = next((s for s in map(parse_clock, badges) if s), None)
+        else:
+            continue
+        if not isinstance(video_id, str) or not VIDEO_ID.match(video_id) or video_id in seen:
+            continue
+        seen.add(video_id)
+        items.append(PlaylistItem(video_id, (title or video_id).strip(), duration))
+    return items
+
+
+def uploads_playlists(channel_id: str) -> list[str]:
+    """Long-form uploads (UULF…, no Shorts), then all uploads (UU…) as a fallback."""
+    suffix = channel_id[2:]
+    return [f"UULF{suffix}", f"UU{suffix}"]
+
+
 def _iso(value: str | None) -> str | None:
     if not value:
         return None
@@ -293,6 +346,22 @@ class HttpYouTubeClient:
             return None
         html = self._page(f"/watch?v={video_id}")
         return parse_watch_page(extract_json(html, "ytInitialPlayerResponse"), video_id)
+
+    def channel_videos(self, channel_id: str) -> list[PlaylistItem]:
+        """The channel's most recent uploads (first page of the uploads playlist, about 100)."""
+        if not CHANNEL_ID.match(channel_id):
+            return []
+        for playlist in uploads_playlists(channel_id):
+            try:
+                html = self._page(f"/playlist?list={playlist}")
+            except (YouTubeBlocked, YouTubeSessionExpired):
+                raise
+            except YouTubeError:
+                continue  # e.g. a channel without a long-form playlist
+            items = parse_playlist(extract_json(html, "ytInitialData"))
+            if items:
+                return items
+        return []
 
     def resolve_channel(self, handle_or_id: str) -> Channel | None:
         value = handle_or_id.strip().rstrip("/")

@@ -36,8 +36,9 @@ def check_patreon_session(store: SettingsStore, client: PatreonClient) -> bool:
     return ok
 
 
-def upsert_post(conn: sqlite3.Connection, source_id: int, post: Post) -> bool:
-    """Insert or refresh one episode and its Patreon progress. Returns True if newly added."""
+def upsert_post(conn: sqlite3.Connection, source_id: int, post: Post, with_progress: bool = True) -> bool:
+    """Insert or refresh one episode and (unless with_progress is False) its source-side progress.
+    Unknown dates/lengths never overwrite known ones. Returns True if newly added."""
     existing = conn.execute(
         "SELECT id FROM episodes WHERE source_id = ? AND patreon_post_id = ?", (source_id, post.post_id)
     ).fetchone()
@@ -45,8 +46,9 @@ def upsert_post(conn: sqlite3.Connection, source_id: int, post: Post) -> bool:
     if existing:
         episode_id = existing["id"]
         conn.execute(
-            "UPDATE episodes SET patreon_media_id = ?, patreon_url = ?, title = ?, published_at = ?, "
-            "duration_secs = ?, updated_at = ? WHERE id = ?",
+            "UPDATE episodes SET patreon_media_id = ?, patreon_url = ?, title = ?, "
+            "published_at = COALESCE(?, published_at), duration_secs = COALESCE(?, duration_secs), "
+            "updated_at = ? WHERE id = ?",
             (post.media_id, post.url, post.title, post.published_at, post.duration_secs, now, episode_id),
         )
     else:
@@ -56,6 +58,8 @@ def upsert_post(conn: sqlite3.Connection, source_id: int, post: Post) -> bool:
             (source_id, post.post_id, post.media_id, post.url, post.title, post.published_at,
              post.duration_secs),
         ).lastrowid
+    if not with_progress:
+        return existing is None
     p = post.progress
     conn.execute(
         "INSERT INTO progress (episode_id, patreon_position_secs, patreon_is_watched, patreon_watch_state, "
@@ -109,8 +113,13 @@ def check_youtube_session(store: SettingsStore, client) -> bool:
 DETAILS_RETRY_AFTER = timedelta(days=1)
 
 
-def _cached_details(conn: sqlite3.Connection, client, video_id: str):
-    """Watch-page details, fetched once. A failed lookup is cached too, and retried after a day."""
+MAX_DETAIL_FETCHES_PER_RUN = 25  # watch pages are ~1.5 s each; the rest are fetched on later runs
+
+
+def _cached_details(conn: sqlite3.Connection, client, video_id: str, budget: list[int] | None = None):
+    """Watch-page details, fetched once. A failed lookup is cached too, and retried after a day.
+    `budget` is a one-item list counting fetches left this run; when it's spent, the cached row
+    (possibly None) is returned without fetching."""
     from .youtube import YouTubeBlocked, YouTubeError, YouTubeSessionExpired
 
     row = conn.execute("SELECT * FROM youtube_videos WHERE video_id = ?", (video_id,)).fetchone()
@@ -118,6 +127,10 @@ def _cached_details(conn: sqlite3.Connection, client, video_id: str):
         fetched = datetime.fromisoformat(row["fetched_at"].replace("Z", "+00:00"))
         if row["channel_id"] or datetime.now(timezone.utc) - fetched < DETAILS_RETRY_AFTER:
             return row
+    if budget is not None:
+        if budget[0] <= 0:
+            return row
+        budget[0] -= 1
     try:
         details = client.video_details(video_id)
     except (YouTubeBlocked, YouTubeSessionExpired):
@@ -134,46 +147,95 @@ def _cached_details(conn: sqlite3.Connection, client, video_id: str):
     return conn.execute("SELECT * FROM youtube_videos WHERE video_id = ?", (video_id,)).fetchone()
 
 
-def discover_youtube_all(conn: sqlite3.Connection, store: SettingsStore, client) -> list[DiscoveryResult]:
-    """Recent watch history -> episodes for each enabled YouTube channel source.
+def _youtube_progress(conn, source_id: int, video_id: str, percent: float, duration: float | None) -> Progress:
+    """Position = percent watched x length. YouTube gives no 'last watched' time, so the
+    timestamp is 'now' whenever the position changes, and kept otherwise."""
+    position = round(percent / 100 * duration, 1) if duration else None
+    existing = conn.execute(
+        "SELECT p.patreon_position_secs, p.patreon_updated_at FROM episodes e "
+        "JOIN progress p ON p.episode_id = e.id WHERE e.source_id = ? AND e.patreon_post_id = ?",
+        (source_id, video_id)).fetchone()
+    unchanged = existing is not None and existing["patreon_position_secs"] == position
+    updated_at = existing["patreon_updated_at"] if unchanged else utcnow()
+    return Progress(position_secs=position, is_watched=False,
+                    watch_state="is_watching" if position else "is_not_watched",
+                    updated_at=updated_at if position else None)
 
-    Position = percent watched x length (about 1% resolution). YouTube gives no
-    'last watched' time, so the progress timestamp is 'now' whenever the percent changes.
+
+def _store_video(conn, source, result: DiscoveryResult, video_id: str, title: str, published_at: str | None,
+                 duration: float | None, percent: float | None) -> None:
+    from .youtube import watch_url
+
+    progress = (_youtube_progress(conn, source["id"], video_id, percent, duration) if percent is not None
+                else Progress(None, False, "is_not_watched", None))
+    post = Post(post_id=video_id, title=title, published_at=published_at, url=watch_url(video_id),
+                post_type="youtube", media_id=video_id, duration_secs=duration, progress=progress)
+    with conn:
+        # Only history carries progress. A video that isn't in this run's history keeps whatever
+        # progress was recorded before (it may simply have scrolled off the first history page).
+        if upsert_post(conn, source["id"], post, with_progress=percent is not None):
+            result.added += 1
+        else:
+            result.refreshed += 1
+
+
+def discover_youtube_all(conn: sqlite3.Connection, store: SettingsStore, client) -> list[DiscoveryResult]:
+    """Every recent upload of each enabled YouTube channel source (about 100, from the uploads
+    playlist), with progress from the first page of watch history.
+
+    Exact publish dates need one watch-page request per video; at most
+    MAX_DETAIL_FETCHES_PER_RUN are made per run and later runs fill in the rest.
     """
-    from .youtube import YouTubeSessionExpired, watch_url
+    from .youtube import YouTubeSessionExpired
 
     if not check_youtube_session(store, client):
         raise YouTubeSessionExpired("YouTube cookies are no longer signed in")
     sources = {s["campaign_id"]: s for s in conn.execute(
         "SELECT * FROM sources WHERE enabled = 1 AND kind = 'youtube' ORDER BY id")}
     results = {cid: DiscoveryResult(source_id=s["id"], label=s["label"]) for cid, s in sources.items()}
-    for item in client.history():
-        if item.percent is None:
-            continue  # no progress bar: nothing to sync, so don't spend a request on it
-        details = _cached_details(conn, client, item.video_id)
-        source = sources.get(details["channel_id"])
-        if source is None:
+    if not sources:
+        return []
+    history = {i.video_id: i for i in client.history() if i.percent is not None}
+    budget = [MAX_DETAIL_FETCHES_PER_RUN]
+
+    def cached(video_id: str):
+        return conn.execute("SELECT * FROM youtube_videos WHERE video_id = ?", (video_id,)).fetchone()
+
+    # 1. Each channel's uploads; progress where the video is in history.
+    listed: dict[str, str] = {}
+    for channel_id, source in sources.items():
+        uploads = client.channel_videos(channel_id)
+        results[channel_id].posts_seen = len(uploads)
+        for item in uploads:
+            listed[item.video_id] = channel_id
+            row = cached(item.video_id)
+            duration = item.duration_secs or (row["duration_secs"] if row else None)
+            percent = history[item.video_id].percent if item.video_id in history else None
+            _store_video(conn, source, results[channel_id], item.video_id, item.title,
+                         row["published_at"] if row else None, duration, percent)
+
+    # 2. Exact publish dates for listed videos, newest first, within the per-run budget.
+    for video_id, channel_id in listed.items():
+        row = cached(video_id)
+        if row is not None and row["published_at"]:
             continue
-        result = results[source["campaign_id"]]
-        result.posts_seen += 1
-        duration = details["duration_secs"]
-        position = round(item.percent / 100 * duration, 1) if duration else None
-        existing = conn.execute(
-            "SELECT p.patreon_position_secs, p.patreon_updated_at FROM episodes e "
-            "JOIN progress p ON p.episode_id = e.id WHERE e.source_id = ? AND e.patreon_post_id = ?",
-            (source["id"], item.video_id)).fetchone()
-        unchanged = existing is not None and existing["patreon_position_secs"] == position
-        updated_at = existing["patreon_updated_at"] if unchanged else utcnow()
-        post = Post(
-            post_id=item.video_id, title=details["title"] or item.title, published_at=details["published_at"],
-            url=watch_url(item.video_id), post_type="youtube", media_id=item.video_id, duration_secs=duration,
-            progress=Progress(position_secs=position, is_watched=False,
-                              watch_state="is_watching" if position else "is_not_watched",
-                              updated_at=updated_at if position else None),
-        )
-        with conn:
-            if upsert_post(conn, source["id"], post):
-                result.added += 1
-            else:
-                result.refreshed += 1
+        row = _cached_details(conn, client, video_id, budget)
+        if row is not None and row["published_at"]:
+            with conn:
+                conn.execute("UPDATE episodes SET published_at = ?, duration_secs = COALESCE(duration_secs, ?) "
+                             "WHERE source_id = ? AND patreon_post_id = ?",
+                             (row["published_at"], row["duration_secs"], sources[channel_id]["id"], video_id))
+        if budget[0] <= 0:
+            break
+
+    # 3. Watched videos older than the uploads page: the watch page says which channel they're from.
+    for video_id, item in history.items():
+        if video_id in listed:
+            continue
+        row = _cached_details(conn, client, video_id, budget)
+        if row is None or row["channel_id"] not in sources:
+            continue
+        source = sources[row["channel_id"]]
+        _store_video(conn, source, results[row["channel_id"]], video_id, row["title"] or item.title,
+                     row["published_at"], row["duration_secs"], item.percent)
     return list(results.values())

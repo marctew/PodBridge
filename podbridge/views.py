@@ -445,7 +445,7 @@ def refresh_episodes():
     if has_sources(db, "youtube"):
         try:
             for r in discover_youtube_all(db, store, youtube_client(store)):
-                flash(f"YouTube · {r.label}: {r.posts_seen} watched videos in recent history, {r.added} new", "ok")
+                flash(f"YouTube · {r.label}: {r.posts_seen} recent uploads, {r.added} new", "ok")
         except YOUTUBE_FAILURES as exc:
             flash(youtube_failure(store, exc), "error")
 

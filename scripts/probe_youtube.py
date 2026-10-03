@@ -51,6 +51,10 @@ def main() -> None:
         channel = client.resolve_channel(sys.argv[1])
         print(f"  {sys.argv[1]} -> {channel}")
         if channel:
+            uploads = client.channel_videos(channel.channel_id)
+            print(f"  uploads listed: {len(uploads)}, with a length: {sum(1 for u in uploads if u.duration_secs)}")
+            for upload in uploads[:5]:
+                print(f"    {upload.duration_secs or 0:7.0f}s  {upload.title[:70]}")
             checked = with_bar[:10]
             ours = [i for i in checked
                     if (d := client.video_details(i.video_id)) and d.channel_id == channel.channel_id]

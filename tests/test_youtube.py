@@ -153,9 +153,13 @@ def test_loose_matching_refuses_close_calls():
 # --- discovery and sync with fakes ---
 
 class FakeYouTube:
-    def __init__(self, history, details, logged_in=True):
+    def __init__(self, history, details, logged_in=True, uploads=None):
         self._history, self._details, self.logged_in = history, details, logged_in
+        self.uploads = uploads or {}
         self.detail_calls: list[str] = []
+
+    def channel_videos(self, channel_id):
+        return list(self.uploads.get(channel_id, []))
 
     def check_session(self):
         return self.logged_in
@@ -197,9 +201,9 @@ def yt_env(tmp_path):
 
 def test_youtube_discovery_filters_channel_and_caches_details(yt_env):
     conn, store = yt_env
-    yt = FakeYouTube(parse_history(fixture_json("youtube_history.json")), DETAILS)
+    yt = FakeYouTube(parse_history(fixture_json("youtube_history.json")), DETAILS)  # no uploads page
     [result] = discover_youtube_all(conn, store, yt)
-    assert (result.posts_seen, result.added) == (2, 2)
+    assert (result.posts_seen, result.added) == (0, 2)  # found via history alone
     rows = {r["patreon_post_id"]: (r["patreon_position_secs"], r["patreon_url"]) for r in conn.execute(
         "SELECT e.patreon_post_id, e.patreon_url, p.patreon_position_secs FROM episodes e "
         "JOIN progress p ON p.episode_id = e.id")}
