@@ -100,3 +100,9 @@ td a:hover { text-decoration: underline; }
 .nowrap { white-space: nowrap; }
 .mono { font-family: ui-monospace, Consolas, monospace; font-size: .85rem; }
 .badge-progress { color: var(--warn); font-variant-numeric: tabular-nums; }
+.kv a { color: var(--text); }
+.warn-text, .kv a.warn-text { color: var(--warn); }
+a.match-link { color: var(--text); text-decoration: underline dotted var(--muted); text-underline-offset: 3px; }
+button.link.accent { color: var(--accent); }
+tr.current td { background: rgba(63, 185, 80, .08); }
+.actions { margin-bottom: 1rem; }

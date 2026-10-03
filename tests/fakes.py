@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from podbridge.patreon import Collection, Post
+from podbridge.pocketcasts import CatalogueEpisode, EpisodeState, Podcast
 
 
 class FakeResponse:
@@ -54,3 +55,44 @@ class FakePatreonClient:
 
     def list_collections(self, campaign_id: str) -> list[Collection]:
         return list(self.collections)
+
+
+class FakePocketCastsClient:
+    def __init__(self, podcasts: list[Podcast] | None = None,
+                 catalogue: list[CatalogueEpisode] | None = None,
+                 states: dict[str, EpisodeState] | None = None,
+                 error: Exception | None = None, truncated: bool = False):
+        self.podcasts = podcasts or []
+        self.catalogue = catalogue or []
+        self.states = states or {}
+        self.error = error
+        self.truncated = truncated
+        self.updates: list[tuple] = []
+
+    def _maybe_fail(self):
+        if self.error:
+            raise self.error
+
+    def check_login(self) -> bool:
+        self._maybe_fail()
+        return True
+
+    def list_podcasts(self) -> list[Podcast]:
+        self._maybe_fail()
+        return list(self.podcasts)
+
+    def list_episodes(self, podcast_uuid: str):
+        self._maybe_fail()
+        return list(self.catalogue), self.truncated
+
+    def episode_states(self, podcast_uuid: str) -> dict[str, EpisodeState]:
+        self._maybe_fail()
+        return dict(self.states)
+
+    def get_episode_state(self, episode_uuid: str, podcast_uuid: str) -> EpisodeState | None:
+        self._maybe_fail()
+        return self.states.get(episode_uuid)
+
+    def update_episode(self, episode_uuid, podcast_uuid, position, duration, status) -> None:
+        self._maybe_fail()
+        self.updates.append((episode_uuid, podcast_uuid, position, duration, status))

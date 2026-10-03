@@ -5,7 +5,7 @@
   <h1>Episodes</h1>
   <form method="post" action="{{ url_for('main.refresh_episodes') }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <button type="submit" class="secondary">Refresh from Patreon</button>
+    <button type="submit" class="secondary">Refresh</button>
   </form>
 </div>
 
@@ -15,15 +15,19 @@
   {% endfor %}
 </nav>
 
+{% set method_labels = {'auto_title': 'Title', 'auto_duration': 'Date + length', 'manual': 'Manual'} %}
 {% for source in sources %}
   {% set rows = by_source.get(source.id, []) %}
   <section class="card table-card">
     <h2>{{ source.label }}{% if not source.enabled %} <span class="badge badge-unknown">Disabled</span>{% endif %}</h2>
+    {% if not source.pocketcasts_podcast_uuid %}
+      <p class="muted">Not linked to a Pocket Casts podcast. <a href="{{ url_for('main.link_source_form', source_id=source.id) }}">Link it</a>.</p>
+    {% endif %}
     {% if rows %}
     <div class="table-wrap">
       <table>
         <thead>
-          <tr><th>Title</th><th>Published</th><th class="num">Length</th><th>Patreon</th><th>Pocket Casts</th></tr>
+          <tr><th>Title</th><th>Published</th><th class="num">Length</th><th>Patreon</th><th>Pocket Casts</th><th>Match</th></tr>
         </thead>
         <tbody>
         {% for e in rows %}
@@ -37,8 +41,19 @@
               {% else %}<span class="muted">Not started</span>{% endif %}
             </td>
             <td class="nowrap">
-              {% if e.match_method == 'none' %}<span class="muted">Not matched</span>
-              {% else %}{{ e.pocketcasts_position_secs | hms }}{% endif %}
+              {% if e.match_method == 'none' %}<span class="muted">–</span>
+              {% elif e.pocketcasts_status == 3 %}<span class="badge badge-ok">Played</span>
+              {% elif e.pocketcasts_status == 2 %}<span class="badge badge-progress">{{ e.pocketcasts_position_secs | hms }}</span>
+              {% else %}<span class="muted">Not started</span>{% endif %}
+            </td>
+            <td class="nowrap">
+              {% if source.pocketcasts_podcast_uuid %}
+                <a class="match-link" href="{{ url_for('main.match_episode', episode_id=e.id) }}">
+                  {% if e.match_method != 'none' %}{{ method_labels[e.match_method] }}
+                  {% elif e.match_locked %}<span class="muted">No match</span>
+                  {% else %}<span class="warn-text">Unmatched</span>{% endif %}
+                </a>
+              {% endif %}
             </td>
           </tr>
         {% endfor %}
@@ -46,7 +61,7 @@
       </table>
     </div>
     {% else %}
-      <p class="muted">No episodes{% if current != 'all' %} match this filter{% else %} yet. Use “Refresh from Patreon”{% endif %}.</p>
+      <p class="muted">No episodes{% if current != 'all' %} match this filter{% else %} yet. Use “Refresh”{% endif %}.</p>
     {% endif %}
   </section>
 {% endfor %}

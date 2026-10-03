@@ -6,7 +6,7 @@
 <section class="card table-card">
   <div class="table-wrap">
     <table>
-      <thead><tr><th>Label</th><th>Campaign</th><th>Collection</th><th class="num">Episodes</th><th>Pocket Casts podcast</th><th></th></tr></thead>
+      <thead><tr><th>Label</th><th>Campaign</th><th>Collection</th><th class="num">Episodes</th><th class="num">Matched</th><th>Pocket Casts podcast</th><th></th></tr></thead>
       <tbody>
       {% for s in sources %}
         <tr>
@@ -14,7 +14,12 @@
           <td class="mono">{{ s.campaign_id }}</td>
           <td class="mono">{{ s.collection_id }}</td>
           <td class="num">{{ s.episode_count }}</td>
-          <td>{% if s.pocketcasts_podcast_uuid %}<span class="mono">{{ s.pocketcasts_podcast_uuid[:8] }}…</span>{% else %}<span class="muted">Not linked yet</span>{% endif %}</td>
+          <td class="num">{{ s.matched_count }}</td>
+          <td class="nowrap">
+            {% if s.pocketcasts_podcast_uuid %}<span class="mono">{{ s.pocketcasts_podcast_uuid[:8] }}…</span>
+              <a href="{{ url_for('main.link_source_form', source_id=s.id) }}">Change</a>
+            {% else %}<a href="{{ url_for('main.link_source_form', source_id=s.id) }}">Link podcast</a>{% endif %}
+          </td>
           <td>
             <form method="post" action="{{ url_for('main.toggle_source', source_id=s.id) }}">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

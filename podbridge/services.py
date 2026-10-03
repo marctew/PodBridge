@@ -5,6 +5,7 @@ from __future__ import annotations
 from flask import current_app
 
 from .patreon import HttpPatreonClient, PatreonClient
+from .pocketcasts import HttpPocketCastsClient, PocketCastsClient, TokenCache
 from .settings_store import SettingsStore
 
 
@@ -22,3 +23,29 @@ def _default_patreon_factory(store: SettingsStore) -> PatreonClient:
 def patreon_client(store: SettingsStore) -> PatreonClient:
     factory = current_app.extensions.get("patreon_client_factory", _default_patreon_factory)
     return factory(store)
+
+
+def pocketcasts_tokens() -> TokenCache:
+    return current_app.extensions.setdefault("pocketcasts_tokens", TokenCache())
+
+
+def _default_pocketcasts_factory(store: SettingsStore) -> PocketCastsClient:
+    email = store.get_secret("pocketcasts_email")
+    password = store.get_secret("pocketcasts_password")
+    if not (email and password):
+        raise NotConfigured("Pocket Casts email and password are not set. Add them in Settings.")
+    return HttpPocketCastsClient(
+        email, password,
+        refresh_token=store.get_secret("pocketcasts_refresh_token"),
+        on_refresh_token=lambda token: store.set_secret("pocketcasts_refresh_token", token),
+        tokens=pocketcasts_tokens(),
+    )
+
+
+def pocketcasts_client(store: SettingsStore) -> PocketCastsClient:
+    factory = current_app.extensions.get("pocketcasts_client_factory", _default_pocketcasts_factory)
+    return factory(store)
+
+
+def pocketcasts_configured(store: SettingsStore) -> bool:
+    return store.is_set("pocketcasts_email") and store.is_set("pocketcasts_password")

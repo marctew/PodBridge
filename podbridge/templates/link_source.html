@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}Link podcast{% endblock %}
+{% block content %}
+<p><a href="{{ url_for('main.sources') }}">← Sources</a></p>
+<h1>Link {{ source.label }}</h1>
+<section class="card">
+  <p class="muted">Pick the Pocket Casts podcast that carries this collection. Private Patreon feeds are listed first.
+    Changing the podcast clears this source's existing matches.</p>
+  {% if podcasts %}
+  <form method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="field">
+      <label for="podcast_uuid">Podcast</label>
+      <select id="podcast_uuid" name="podcast_uuid">
+        {% for p in podcasts %}
+          <option value="{{ p.uuid }}" {% if p.uuid == source.pocketcasts_podcast_uuid %}selected{% endif %}>
+            {{ p.title }}{% if p.feed_host == 'www.patreon.com' %} (Patreon feed){% endif %}{% if p.author %} · {{ p.author }}{% endif %}
+          </option>
+        {% endfor %}
+      </select>
+    </div>
+    <button type="submit">Link</button>
+  </form>
+  {% else %}
+    <p>No subscriptions found in your Pocket Casts account.</p>
+  {% endif %}
+</section>
+{% endblock %}

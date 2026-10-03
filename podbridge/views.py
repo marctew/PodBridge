@@ -1,18 +1,23 @@
-"""Dashboard, Settings and /healthz."""
+"""Web UI routes and /healthz."""
 
 from __future__ import annotations
 
+from datetime import datetime
 from urllib.parse import urlparse
 
-from flask import Blueprint, flash, jsonify, redirect, render_template, request, url_for
+from flask import Blueprint, abort, flash, jsonify, redirect, render_template, request, url_for
 
 from .auth import safe_next
 from .crypto import SecretError
 from .db import get_db, utcnow
 from .discovery import check_patreon_session, discover_all
 from .http import TransportError
+from .linking import (
+    MatchError, allow_auto_match, check_pocketcasts_login, link_source, refresh_all, set_manual_match, unlink,
+)
 from .patreon import PatreonBlocked, PatreonError, PatreonSessionExpired
-from .services import NotConfigured, patreon_client
+from .pocketcasts import PocketCastsAuthError, PocketCastsBlocked, PocketCastsError
+from .services import NotConfigured, patreon_client, pocketcasts_client, pocketcasts_configured, pocketcasts_tokens
 from .settings_store import MAX_INTERVAL_MINUTES, MIN_INTERVAL_MINUTES, SettingsStore, get_store
 
 bp = Blueprint("main", __name__)
@@ -30,6 +35,9 @@ SERVICE_SECRETS = {
     "patreon": ("patreon_session_id",),
     "pocketcasts": ("pocketcasts_email", "pocketcasts_password"),
 }
+
+PATREON_FAILURES = (NotConfigured, SecretError, PatreonError, TransportError)
+POCKETCASTS_FAILURES = (NotConfigured, SecretError, PocketCastsError, TransportError)
 
 
 def connection_status(store: SettingsStore, service: str) -> dict:
@@ -50,6 +58,41 @@ def normalise_patreon_cookie(value: str) -> str:
     return value.split(";", 1)[0].strip()
 
 
+# --- failure reporting ---
+
+def patreon_failure(store: SettingsStore, exc: Exception) -> str:
+    """Record what a Patreon failure means for connection status; return a user-facing message."""
+    if isinstance(exc, NotConfigured):
+        return str(exc)
+    if isinstance(exc, SecretError):
+        return "Stored Patreon cookie can't be decrypted (was ENCRYPTION_KEY changed?). Re-enter it in Settings."
+    if isinstance(exc, PatreonSessionExpired):
+        store.set("patreon_status", "expired")
+        store.set("patreon_verified_at", utcnow())
+        return "Patreon session has expired. Paste a fresh session_id cookie in Settings."
+    if isinstance(exc, PatreonBlocked):
+        return f"{exc}: Patreon is pushing back, so try again later."
+    store.set("patreon_status", "error")
+    return f"Couldn't reach Patreon: {exc}"
+
+
+def pocketcasts_failure(store: SettingsStore, exc: Exception) -> str:
+    if isinstance(exc, NotConfigured):
+        return str(exc)
+    if isinstance(exc, SecretError):
+        return "Stored Pocket Casts credentials can't be decrypted (was ENCRYPTION_KEY changed?). Re-enter them."
+    if isinstance(exc, PocketCastsAuthError):
+        store.set("pocketcasts_status", "error")
+        store.set("pocketcasts_verified_at", utcnow())
+        return "Pocket Casts rejected the email or password. Check them in Settings."
+    if isinstance(exc, PocketCastsBlocked):
+        return f"{exc}: Pocket Casts is pushing back, so try again later."
+    store.set("pocketcasts_status", "error")
+    return f"Pocket Casts problem: {exc}"
+
+
+# --- dashboard and settings ---
+
 @bp.get("/")
 def dashboard():
     store = get_store()
@@ -58,8 +101,10 @@ def dashboard():
     counts = db.execute(
         "SELECT (SELECT COUNT(*) FROM sources WHERE enabled = 1) AS sources, "
         "(SELECT COUNT(*) FROM episodes) AS episodes, "
+        "(SELECT COUNT(*) FROM episodes WHERE match_method != 'none') AS matched, "
         "(SELECT COUNT(*) FROM episodes e JOIN sources s ON s.id = e.source_id "
-        " WHERE e.match_method = 'none' AND s.pocketcasts_podcast_uuid IS NOT NULL) AS unmatched"
+        " WHERE e.match_method = 'none' AND e.match_locked = 0 "
+        " AND s.pocketcasts_podcast_uuid IS NOT NULL) AS unmatched"
     ).fetchone()
     return render_template(
         "dashboard.html",
@@ -81,8 +126,11 @@ def settings():
             flash(error, "error")
         if not errors:
             flash("Settings saved.", "ok")
-        if request.form.get("action") == "test_patreon":
+        action = request.form.get("action")
+        if action == "test_patreon":
             run_patreon_test(store)
+        elif action == "test_pocketcasts":
+            run_pocketcasts_test(store)
         return redirect(url_for("main.settings"))
 
     webhook_host = None
@@ -130,6 +178,7 @@ def save_settings(store: SettingsStore, form) -> list[str]:
         store.delete(f"{service}_verified_at")
         if service == "pocketcasts":
             store.delete("pocketcasts_refresh_token")
+            pocketcasts_tokens().clear()
 
     try:
         interval = int(form.get("sync_interval_minutes", ""))
@@ -146,25 +195,6 @@ def save_settings(store: SettingsStore, form) -> list[str]:
     return errors
 
 
-def patreon_failure(store: SettingsStore, exc: Exception) -> str:
-    """Record what a Patreon failure means for connection status; return a user-facing message."""
-    if isinstance(exc, NotConfigured):
-        return str(exc)
-    if isinstance(exc, SecretError):
-        return "Stored Patreon cookie can't be decrypted (was ENCRYPTION_KEY changed?). Re-enter it in Settings."
-    if isinstance(exc, PatreonSessionExpired):
-        store.set("patreon_status", "expired")
-        store.set("patreon_verified_at", utcnow())
-        return "Patreon session has expired. Paste a fresh session_id cookie in Settings."
-    if isinstance(exc, PatreonBlocked):
-        return f"{exc}: Patreon is pushing back, so try again later."
-    store.set("patreon_status", "error")
-    return f"Couldn't reach Patreon: {exc}"
-
-
-PATREON_FAILURES = (NotConfigured, SecretError, PatreonError, TransportError)
-
-
 def run_patreon_test(store: SettingsStore) -> None:
     try:
         ok = check_patreon_session(store, patreon_client(store))
@@ -177,11 +207,22 @@ def run_patreon_test(store: SettingsStore) -> None:
         flash("Patreon session is not logged in. Paste a fresh session_id cookie.", "error")
 
 
+def run_pocketcasts_test(store: SettingsStore) -> None:
+    try:
+        check_pocketcasts_login(store, pocketcasts_client(store))
+    except POCKETCASTS_FAILURES as exc:
+        flash(pocketcasts_failure(store, exc), "error")
+        return
+    flash("Pocket Casts login works.", "ok")
+
+
+# --- episodes ---
+
 EPISODE_FILTERS = {
     "all": "1 = 1",
     "in_progress": "p.patreon_watch_state = 'is_watching' AND COALESCE(p.patreon_is_watched, 0) = 0",
     "watched": "p.patreon_is_watched = 1",
-    "unmatched": "e.match_method = 'none'",
+    "unmatched": "e.match_method = 'none' AND e.match_locked = 0",
 }
 
 
@@ -206,26 +247,92 @@ def episodes():
 
 @bp.post("/episodes/refresh")
 def refresh_episodes():
+    """Patreon discovery, then Pocket Casts catalogue + auto-matching."""
     store = get_store()
+    db = get_db()
     try:
-        results = discover_all(get_db(), store, patreon_client(store))
+        for r in discover_all(db, store, patreon_client(store)):
+            flash(f"Patreon · {r.label}: {r.posts_seen} posts, {r.added} new"
+                  + (f", {r.skipped_no_media} without media skipped" if r.skipped_no_media else ""), "ok")
     except PATREON_FAILURES as exc:
         flash(patreon_failure(store, exc), "error")
+
+    linked = db.execute("SELECT COUNT(*) FROM sources WHERE enabled = 1 "
+                        "AND pocketcasts_podcast_uuid IS NOT NULL").fetchone()[0]
+    if not pocketcasts_configured(store):
+        flash("Pocket Casts isn't set up yet, so matching was skipped.", "warn")
+    elif not linked:
+        flash("No source is linked to a Pocket Casts podcast yet. Link one on the Sources page.", "warn")
     else:
-        for r in results:
-            flash(f"{r.label}: {r.posts_seen} posts, {r.added} new, {r.refreshed} refreshed"
-                  + (f", {r.skipped_no_media} without media skipped" if r.skipped_no_media else ""), "ok")
-        if not results:
-            flash("No enabled sources to refresh.", "warn")
+        try:
+            for r in refresh_all(db, store, pocketcasts_client(store)):
+                flash(f"Pocket Casts · {r.label}: {r.catalogue_size} episodes in feed, "
+                      f"{r.matched_total} matched ({r.newly_matched} new), {r.unmatched} unmatched", "ok")
+                if r.catalogue_truncated:
+                    flash("Pocket Casts says the feed has more episodes than it returned; "
+                          "older episodes may not match.", "warn")
+        except POCKETCASTS_FAILURES as exc:
+            flash(pocketcasts_failure(store, exc), "error")
+
     nxt = request.form.get("next")
     return redirect(safe_next(nxt) if nxt else url_for("main.episodes"))
 
+
+def _days_apart(a: str | None, b: str | None) -> float:
+    try:
+        da = datetime.fromisoformat((a or "").replace("Z", "+00:00"))
+        db_ = datetime.fromisoformat((b or "").replace("Z", "+00:00"))
+    except ValueError:
+        return float("inf")
+    return abs((da - db_).total_seconds()) / 86400
+
+
+@bp.get("/episodes/<int:episode_id>/match")
+def match_episode(episode_id: int):
+    db = get_db()
+    episode = db.execute(
+        "SELECT e.*, s.label AS source_label, s.pocketcasts_podcast_uuid FROM episodes e "
+        "JOIN sources s ON s.id = e.source_id WHERE e.id = ?", (episode_id,)).fetchone()
+    if episode is None:
+        abort(404)
+    candidates = []
+    if episode["pocketcasts_podcast_uuid"]:
+        rows = db.execute(
+            "SELECT pe.*, other.id AS taken_by_id, other.title AS taken_by_title FROM pocketcasts_episodes pe "
+            "LEFT JOIN episodes other ON other.pocketcasts_episode_uuid = pe.uuid AND other.id != ? "
+            "WHERE pe.podcast_uuid = ?", (episode_id, episode["pocketcasts_podcast_uuid"])).fetchall()
+        candidates = sorted(rows, key=lambda r: (r["taken_by_id"] is not None,
+                                                 _days_apart(r["published_at"], episode["published_at"])))
+    return render_template("match.html", episode=episode, candidates=candidates)
+
+
+@bp.post("/episodes/<int:episode_id>/match")
+def save_match(episode_id: int):
+    db = get_db()
+    try:
+        if request.form.get("action") == "unlink":
+            unlink(db, episode_id)
+            flash("Unlinked. Auto-matching will leave this episode alone.", "ok")
+        elif request.form.get("action") == "allow_auto":
+            allow_auto_match(db, episode_id)
+            flash("Auto-matching re-enabled for this episode; it applies on the next refresh.", "ok")
+        else:
+            set_manual_match(db, episode_id, request.form.get("uuid", ""))
+            flash("Matched.", "ok")
+    except MatchError as exc:
+        flash(str(exc), "error")
+        return redirect(url_for("main.match_episode", episode_id=episode_id))
+    return redirect(url_for("main.episodes"))
+
+
+# --- sources ---
 
 @bp.get("/sources")
 def sources():
     db = get_db()
     rows = db.execute(
-        "SELECT s.*, (SELECT COUNT(*) FROM episodes e WHERE e.source_id = s.id) AS episode_count "
+        "SELECT s.*, (SELECT COUNT(*) FROM episodes e WHERE e.source_id = s.id) AS episode_count, "
+        "(SELECT COUNT(*) FROM episodes e WHERE e.source_id = s.id AND e.match_method != 'none') AS matched_count "
         "FROM sources s ORDER BY s.id"
     ).fetchall()
     campaign_id = request.args.get("campaign_id", "").strip()
@@ -269,6 +376,39 @@ def toggle_source(source_id: int):
         db.execute("UPDATE sources SET enabled = 1 - enabled WHERE id = ?", (source_id,))
     return redirect(url_for("main.sources"))
 
+
+@bp.get("/sources/<int:source_id>/link")
+def link_source_form(source_id: int):
+    source = get_db().execute("SELECT * FROM sources WHERE id = ?", (source_id,)).fetchone()
+    if source is None:
+        abort(404)
+    store = get_store()
+    try:
+        podcasts = pocketcasts_client(store).list_podcasts()
+    except POCKETCASTS_FAILURES as exc:
+        flash(pocketcasts_failure(store, exc), "error")
+        return redirect(url_for("main.sources"))
+    # Private Patreon feeds first: that's almost always the right target.
+    podcasts.sort(key=lambda p: (p.feed_host != "www.patreon.com", p.title.casefold()))
+    return render_template("link_source.html", source=source, podcasts=podcasts)
+
+
+@bp.post("/sources/<int:source_id>/link")
+def link_source_save(source_id: int):
+    uuid = request.form.get("podcast_uuid", "").strip()
+    if not uuid:
+        flash("Pick a podcast.", "error")
+        return redirect(url_for("main.link_source_form", source_id=source_id))
+    try:
+        link_source(get_db(), source_id, uuid)
+    except MatchError as exc:
+        flash(str(exc), "error")
+        return redirect(url_for("main.sources"))
+    flash("Linked. Use “Refresh” on the Episodes page to load the feed and match episodes.", "ok")
+    return redirect(url_for("main.sources"))
+
+
+# --- health ---
 
 @bp.get("/healthz")
 def healthz():

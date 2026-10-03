@@ -1,0 +1,11 @@
+{
+  "episodesSortOrder": 3,
+  "autoStartFrom": 0,
+  "autoSkipLast": 0,
+  "episodes": [
+    {"uuid": "pc-ep-peep", "playingStatus": 2, "playedUpTo": 1200, "isDeleted": false, "starred": false,
+     "duration": 2838, "bookmarks": [], "deselectedChapters": ""},
+    {"uuid": "pc-ep-dad", "playingStatus": 3, "playedUpTo": 2102, "isDeleted": true, "starred": false,
+     "duration": 2102}
+  ]
+}

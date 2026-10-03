@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}Match episode{% endblock %}
+{% block content %}
+<p><a href="{{ url_for('main.episodes') }}">← Episodes</a></p>
+<h1>{{ episode.title }}</h1>
+<p class="muted">
+  {{ episode.source_label }} · published {{ episode.published_at | localtime }} · {{ episode.duration_secs | hms }}
+  · {% if episode.match_method == 'none' %}{% if episode.match_locked %}marked as no match{% else %}unmatched{% endif %}
+    {% else %}matched ({{ episode.match_method.replace('_', ' ') }}){% endif %}
+</p>
+
+<div class="row actions">
+  {% if episode.match_method != 'none' or not episode.match_locked %}
+  <form method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button type="submit" name="action" value="unlink" class="secondary">
+      {{ 'Unlink' if episode.match_method != 'none' else 'Mark as no match' }}
+    </button>
+  </form>
+  {% endif %}
+  {% if episode.match_method == 'none' and episode.match_locked %}
+  <form method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button type="submit" name="action" value="allow_auto" class="secondary">Allow auto-matching again</button>
+  </form>
+  {% endif %}
+</div>
+
+<section class="card table-card">
+  <h2>Pocket Casts episodes</h2>
+  {% if candidates %}
+  <p class="muted">Closest publish date first. Episodes already matched elsewhere are listed last.</p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Title</th><th>Published</th><th class="num">Length</th><th></th></tr></thead>
+      <tbody>
+      {% for c in candidates %}
+        <tr {% if c.uuid == episode.pocketcasts_episode_uuid %}class="current"{% endif %}>
+          <td>{{ c.title }}</td>
+          <td class="nowrap">{{ c.published_at | localtime(date_only=True) }}</td>
+          <td class="num">{{ c.duration_secs | hms }}</td>
+          <td class="nowrap">
+            {% if c.uuid == episode.pocketcasts_episode_uuid %}<span class="badge badge-ok">Current</span>
+            {% elif c.taken_by_id %}<span class="muted">Matched to “{{ c.taken_by_title }}”</span>
+            {% else %}
+              <form method="post">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="uuid" value="{{ c.uuid }}">
+                <button type="submit" class="link accent">Use this</button>
+              </form>
+            {% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+    <p class="muted">No Pocket Casts episodes loaded for this source. Link a podcast on the Sources page, then use “Refresh”.</p>
+  {% endif %}
+</section>
+{% endblock %}

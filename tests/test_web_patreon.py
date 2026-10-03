@@ -45,7 +45,7 @@ def test_test_without_cookie_uses_real_factory_and_says_not_set(authed):
 def test_refresh_populates_episodes_page(app, authed):
     use_client(app, FakePatreonClient(fixture_posts()))
     html = post(authed, "/episodes/refresh").get_data(as_text=True)
-    assert "4 posts, 3 new, 0 refreshed, 1 without media skipped" in html
+    assert "4 posts, 3 new, 1 without media skipped" in html
     assert "Hidden Cache - Try Not to Peep" in html
     assert "6:21" in html  # 381.98 s in progress
     assert "Watched" in html

@@ -1,0 +1,10 @@
+{
+  "podcasts": [
+    {"uuid": "pc-podcast-public", "title": "Some Other Show", "author": "Someone",
+     "url": "https://feeds.example.com/other.rss", "episodesSortOrder": 3, "settings": {}},
+    {"uuid": "pc-podcast-bb", "title": "Button Boys", "author": "Glenn Moore, Sarah Keyworth and Pierre Novellie",
+     "url": "https://www.patreon.com/rss/FIXTURE_PRIVATE_FEED?auth=FIXTURE_FEED_TOKEN", "episodesSortOrder": 3},
+    {"title": "missing uuid"}
+  ],
+  "folders": []
+}
