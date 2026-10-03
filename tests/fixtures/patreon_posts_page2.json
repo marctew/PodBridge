@@ -1,0 +1,31 @@
+{
+  "data": [
+    {
+      "id": "170000003",
+      "type": "post",
+      "attributes": {
+        "title": "Hidden Cache - Audio Only",
+        "post_type": "audio_file",
+        "published_at": "2026-09-16T23:00:00.000+00:00",
+        "url": "https://www.patreon.com/posts/hidden-cache-audio-170000003",
+        "post_file": {
+          "duration": 1800.5,
+          "url": "FIXTURE_SIGNED_MEDIA_URL",
+          "progress": {"is_watched": false, "watch_state": "is_not_watched"},
+          "media_id": 755000003
+        }
+      }
+    },
+    {
+      "id": "170000004",
+      "type": "post",
+      "attributes": {
+        "title": "Announcement: tour dates",
+        "post_type": "text_only",
+        "published_at": "2026-09-10T12:00:00.000+00:00",
+        "url": "https://evil.example/not-patreon"
+      }
+    }
+  ],
+  "meta": {"pagination": {"cursors": {"next": null}, "total": 4}}
+}

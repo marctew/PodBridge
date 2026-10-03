@@ -2,7 +2,7 @@
 
 Syncs playback progress from Patreon into Pocket Casts, so a bonus episode watched on Patreon shows as in progress or played in your podcast app. Self-hosted, single user. See [docs/spec.md](docs/spec.md).
 
-**Status:** Phase 1 (skeleton: login, encrypted settings, database, Docker). The sync itself isn't built yet.
+**Status:** Phase 2. Done so far: login, encrypted settings, the Patreon client, the session check, and episode discovery. Next is Pocket Casts matching (Phase 3). The sync itself isn't built yet.
 
 ## Deploy (Docker Compose)
 

@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}Episodes{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>Episodes</h1>
+  <form method="post" action="{{ url_for('main.refresh_episodes') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button type="submit" class="secondary">Refresh from Patreon</button>
+  </form>
+</div>
+
+<nav class="tabs" aria-label="Filter">
+  {% for f in filters %}
+    <a href="{{ url_for('main.episodes', filter=f) }}" {% if f == current %}aria-current="page"{% endif %}>{{ f.replace('_', ' ') | capitalize }}</a>
+  {% endfor %}
+</nav>
+
+{% for source in sources %}
+  {% set rows = by_source.get(source.id, []) %}
+  <section class="card table-card">
+    <h2>{{ source.label }}{% if not source.enabled %} <span class="badge badge-unknown">Disabled</span>{% endif %}</h2>
+    {% if rows %}
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Title</th><th>Published</th><th class="num">Length</th><th>Patreon</th><th>Pocket Casts</th></tr>
+        </thead>
+        <tbody>
+        {% for e in rows %}
+          <tr>
+            <td>{% if e.patreon_url %}<a href="{{ e.patreon_url }}" target="_blank" rel="noopener">{{ e.title }}</a>{% else %}{{ e.title }}{% endif %}</td>
+            <td class="nowrap">{{ e.published_at | localtime(date_only=True) }}</td>
+            <td class="num">{{ e.duration_secs | hms }}</td>
+            <td class="nowrap">
+              {% if e.patreon_is_watched %}<span class="badge badge-ok">Watched</span>
+              {% elif e.patreon_watch_state == 'is_watching' %}<span class="badge badge-progress">{{ e.patreon_position_secs | hms }}</span>
+              {% else %}<span class="muted">Not started</span>{% endif %}
+            </td>
+            <td class="nowrap">
+              {% if e.match_method == 'none' %}<span class="muted">Not matched</span>
+              {% else %}{{ e.pocketcasts_position_secs | hms }}{% endif %}
+            </td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+      <p class="muted">No episodes{% if current != 'all' %} match this filter{% else %} yet. Use “Refresh from Patreon”{% endif %}.</p>
+    {% endif %}
+  </section>
+{% endfor %}
+{% endblock %}

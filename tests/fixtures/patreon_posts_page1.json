@@ -1,0 +1,58 @@
+{
+  "data": [
+    {
+      "id": "171048709",
+      "type": "post",
+      "attributes": {
+        "title": "Hidden Cache - Try Not to Peep",
+        "post_type": "podcast",
+        "published_at": "2026-09-30T23:00:00.000+00:00",
+        "url": "https://www.patreon.com/posts/hidden-cache-try-171048709",
+        "post_file": {
+          "duration": 2837.84,
+          "full_content_duration": 2837.84,
+          "url": "FIXTURE_SIGNED_MEDIA_URL",
+          "viewer_playback_data": {
+            "playback_id": "FIXTURE_PLAYBACK_ID",
+            "playback_token": "FIXTURE_PLAYBACK_TOKEN",
+            "url": "FIXTURE_PLAYBACK_URL",
+            "playback_token_expiry": "2026-10-03T13:00:00+00:00"
+          },
+          "expires_at": "2026-10-03T13:00:00+00:00",
+          "width": 1920,
+          "height": 1080,
+          "progress": {
+            "position_secs": 381.98,
+            "updated_at": "2026-10-03T12:21:00.628+00:00",
+            "is_watched": false,
+            "watch_state": "is_watching"
+          },
+          "default_thumbnail": {"url": "FIXTURE_THUMB_URL", "position": 12.0},
+          "storyboard": {"vtt_url": "FIXTURE_VTT_URL", "json_url": "FIXTURE_JSON_URL"},
+          "transcript_url": "FIXTURE_TRANSCRIPT_URL",
+          "state": "ready",
+          "media_id": 755348961,
+          "closed_captions_enabled": true
+        }
+      }
+    },
+    {
+      "id": "170000002",
+      "type": "post",
+      "attributes": {
+        "title": "  Hidden Cache - Where's Pierre's Dad?  ",
+        "post_type": "podcast",
+        "published_at": "2026-09-23T23:00:00.000+00:00",
+        "url": "/posts/hidden-cache-where-170000002",
+        "post_file": {
+          "duration": 2102.0,
+          "url": "FIXTURE_SIGNED_MEDIA_URL",
+          "progress": {"is_watched": true, "watch_state": "is_watched", "position_secs": 2102.0,
+                       "updated_at": "2026-09-25T20:00:00.000+00:00"},
+          "media_id": 755000002
+        }
+      }
+    }
+  ],
+  "meta": {"pagination": {"cursors": {"next": "FIXTURE_CURSOR_2"}, "total": 4}}
+}

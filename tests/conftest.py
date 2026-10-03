@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import json
 import re
+import socket
+from pathlib import Path
 
 import pytest
 from cryptography.fernet import Fernet
@@ -9,6 +12,20 @@ from podbridge import create_app
 from podbridge.config import Config
 
 PASSWORD = "correct horse battery staple"
+FIXTURES = Path(__file__).parent / "fixtures"
+
+
+def fixture_json(name: str):
+    return json.loads((FIXTURES / name).read_text(encoding="utf-8"))
+
+
+@pytest.fixture(autouse=True)
+def no_network(monkeypatch):
+    """No test may make a live network call (spec section 11)."""
+    def blocked(*_args, **_kwargs):
+        raise RuntimeError("Network access attempted in a test")
+    monkeypatch.setattr(socket.socket, "connect", blocked)
+    monkeypatch.setattr(socket, "create_connection", blocked)
 
 
 @pytest.fixture

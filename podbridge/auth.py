@@ -36,7 +36,7 @@ def _check_csrf() -> None:
         abort(400, "Invalid or missing CSRF token. Reload the page and try again.")
 
 
-def _safe_next(target: str | None) -> str:
+def safe_next(target: str | None) -> str:
     if target and target.startswith("/") and not target.startswith("//"):
         return target
     return url_for("main.dashboard")
@@ -83,7 +83,7 @@ def login():
         session.permanent = True
         session["auth"] = True
         csrf_token()
-        return redirect(_safe_next(request.args.get("next")))
+        return redirect(safe_next(request.args.get("next")))
 
     attempts.append(time.monotonic())
     time.sleep(current_app.config["PODBRIDGE"].login_failure_delay)

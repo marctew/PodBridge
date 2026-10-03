@@ -11,7 +11,7 @@
   <header class="topbar">
     <a class="brand" href="{{ url_for('main.dashboard') }}">PodBridge</a>
     <nav>
-      {% for endpoint, label in [('main.dashboard', 'Dashboard'), ('main.settings', 'Settings')] %}
+      {% for endpoint, label in [('main.dashboard', 'Dashboard'), ('main.episodes', 'Episodes'), ('main.sources', 'Sources'), ('main.settings', 'Settings')] %}
         <a href="{{ url_for(endpoint) }}" {% if request.endpoint == endpoint %}aria-current="page"{% endif %}>{{ label }}</a>
       {% endfor %}
     </nav>

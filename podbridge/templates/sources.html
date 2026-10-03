@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block title %}Sources{% endblock %}
+{% block content %}
+<h1>Sources</h1>
+
+<section class="card table-card">
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Label</th><th>Campaign</th><th>Collection</th><th class="num">Episodes</th><th>Pocket Casts podcast</th><th></th></tr></thead>
+      <tbody>
+      {% for s in sources %}
+        <tr>
+          <td>{{ s.label }}</td>
+          <td class="mono">{{ s.campaign_id }}</td>
+          <td class="mono">{{ s.collection_id }}</td>
+          <td class="num">{{ s.episode_count }}</td>
+          <td>{% if s.pocketcasts_podcast_uuid %}<span class="mono">{{ s.pocketcasts_podcast_uuid[:8] }}…</span>{% else %}<span class="muted">Not linked yet</span>{% endif %}</td>
+          <td>
+            <form method="post" action="{{ url_for('main.toggle_source', source_id=s.id) }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button type="submit" class="link">{{ 'Disable' if s.enabled else 'Enable' }}</button>
+            </form>
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="card">
+  <h2>Add a source</h2>
+  <form method="get" class="row">
+    <div class="field grow">
+      <label for="campaign_id">Patreon campaign ID</label>
+      <input id="campaign_id" name="campaign_id" type="text" inputmode="numeric" value="{{ campaign_id }}" required>
+    </div>
+    <button type="submit" class="secondary">Load collections</button>
+  </form>
+
+  {% if collections is not none %}
+    {% if collections %}
+    <form method="post" action="{{ url_for('main.add_source') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="campaign_id" value="{{ campaign_id }}">
+      <div class="field">
+        <label for="collection_id">Collection</label>
+        <select id="collection_id" name="collection_id" onchange="document.getElementById('label').placeholder = this.selectedOptions[0].dataset.title">
+          {% for c in collections %}
+            <option value="{{ c.collection_id }}" data-title="{{ c.title }}">{{ c.title }}{% if c.num_posts is not none %} ({{ c.num_posts }} posts){% endif %}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="field">
+        <label for="label">Label</label>
+        <input id="label" name="label" type="text" placeholder="{{ collections[0].title }}">
+      </div>
+      <button type="submit">Add source</button>
+    </form>
+    {% else %}
+      <p class="muted">No collections found for that campaign.</p>
+    {% endif %}
+  {% endif %}
+</section>
+{% endblock %}

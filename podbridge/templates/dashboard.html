@@ -39,8 +39,14 @@
     <h2>Library</h2>
     <dl class="kv">
       <dt>Enabled sources</dt><dd>{{ counts.sources }}</dd>
-      <dt>Unmatched episodes</dt><dd>{{ counts.unmatched }}</dd>
+      <dt>Episodes</dt><dd><a href="{{ url_for('main.episodes') }}">{{ counts.episodes }}</a></dd>
+      <dt>Unmatched</dt><dd>{{ counts.unmatched }}</dd>
     </dl>
+    <form method="post" action="{{ url_for('main.refresh_episodes') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="next" value="{{ url_for('main.dashboard') }}">
+      <button type="submit" class="secondary">Refresh from Patreon</button>
+    </form>
   </section>
 </div>
 {% endblock %}

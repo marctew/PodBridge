@@ -26,6 +26,7 @@
     <h2>Patreon {{ status_badge(patreon) }}</h2>
     {{ secret_field("patreon_session_id", "session_id cookie",
                     hint="From patreon.com: DevTools → Application → Cookies → session_id. Pasting “session_id=…” is fine.") }}
+    <button type="submit" name="action" value="test_patreon" class="secondary">Save &amp; test</button>
   </section>
 
   <section class="card">
@@ -53,7 +54,7 @@
                     hint=("Currently posts to " ~ webhook_host) if webhook_host else None) }}
   </section>
 
-  <p class="muted">Credentials are encrypted at rest and never shown again. “Test” buttons arrive with the API clients.</p>
+  <p class="muted">Credentials are encrypted at rest and never shown again. The Pocket Casts test arrives with its client.</p>
   <button type="submit">Save</button>
 </form>
 {% endblock %}

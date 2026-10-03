@@ -34,11 +34,23 @@ def create_app(config: Config | None = None) -> Flask:
     zone = ZoneInfo(config.tz)
 
     @app.template_filter("localtime")
-    def localtime(value: str | None) -> str:
+    def localtime(value: str | None, date_only: bool = False) -> str:
         if not value:
             return "never"
-        moment = datetime.fromisoformat(value.replace("Z", "+00:00"))
-        return moment.astimezone(zone).strftime("%d %b %Y %H:%M")
+        try:
+            moment = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError:
+            return value
+        return moment.astimezone(zone).strftime("%d %b %Y" if date_only else "%d %b %Y %H:%M")
+
+    @app.template_filter("hms")
+    def hms(value: float | None) -> str:
+        if value is None:
+            return "–"
+        total = int(value)
+        hours, rest = divmod(total, 3600)
+        minutes, seconds = divmod(rest, 60)
+        return f"{hours}:{minutes:02}:{seconds:02}" if hours else f"{minutes}:{seconds:02}"
 
     db.init_app(app)
     auth.init_app(app)
