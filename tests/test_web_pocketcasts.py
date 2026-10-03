@@ -41,9 +41,11 @@ def test_link_page_lists_patreon_feeds_first(app, authed):
     html = authed.get("/sources/1/link").get_data(as_text=True)
     assert html.index("Button Boys") < html.index("Alpha Show")
     assert "(Patreon feed)" in html
-    html = post(authed, "/sources/1/link", page="/sources", podcast_uuid="bb").get_data(as_text=True)
-    assert "Linked." in html
+    html = post(authed, "/sources/1/link", page="/sources", podcast_uuid="bb",
+                title_bb="Button Boys").get_data(as_text=True)
+    assert "Linked to Button Boys." in html
     assert "Link podcast" not in html
+    assert "Button Boys ·" in html  # the linked podcast's name shows in the table
 
 
 def test_refresh_without_pocketcasts_setup_warns(app, authed):

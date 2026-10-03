@@ -24,7 +24,7 @@
           <td class="num">{{ s.episode_count }}</td>
           <td class="num">{{ s.matched_count }}</td>
           <td class="nowrap">
-            {% if s.pocketcasts_podcast_uuid %}Linked ·
+            {% if s.pocketcasts_podcast_uuid %}{{ s.podcast_names or 'Linked' }} ·
               <a href="{{ url_for('main.link_source_form', source_id=s.id) }}">Change</a>
             {% else %}<a href="{{ url_for('main.link_source_form', source_id=s.id) }}">Link podcast</a>{% endif %}
           </td>

@@ -15,7 +15,7 @@ from .discovery import check_patreon_session, discover_all
 from .http import TransportError
 from .linking import (
     MatchError, allow_auto_match, apply_pocketcasts_state, check_pocketcasts_login, link_source, refresh_all,
-    set_manual_match, unlink, widen_source,
+    set_manual_match, source_podcasts, unlink, widen_source,
 )
 from .patreon import PatreonBlocked, PatreonError, PatreonSessionExpired
 from .pocketcasts import PocketCastsAuthError, PocketCastsBlocked, PocketCastsError
@@ -124,9 +124,11 @@ def youtube_failure(store: SettingsStore, exc: Exception) -> str:
 
 EPISODE_QUERY = (
     "SELECT e.*, s.pocketcasts_podcast_uuid, s.enabled AS source_enabled, s.kind AS source_kind, "
+    "pe.podcast_uuid AS matched_podcast_uuid, "
     "p.patreon_position_secs, p.patreon_is_watched, p.patreon_watch_state, p.patreon_updated_at, "
     "p.pocketcasts_position_secs, p.pocketcasts_status, p.pocketcasts_changed_at, p.last_synced_at "
-    "FROM episodes e JOIN sources s ON s.id = e.source_id LEFT JOIN progress p ON p.episode_id = e.id"
+    "FROM episodes e JOIN sources s ON s.id = e.source_id LEFT JOIN progress p ON p.episode_id = e.id "
+    "LEFT JOIN pocketcasts_episodes pe ON pe.uuid = e.pocketcasts_episode_uuid"
 )
 
 
@@ -162,19 +164,22 @@ def refresh_pocketcasts_states(episode_id: int | None = None) -> None:
         client = pocketcasts_client(store)
         if episode_id is not None:
             row = db.execute(EPISODE_QUERY + " WHERE e.id = ?", (episode_id,)).fetchone()
-            if row is None or not (row["pocketcasts_episode_uuid"] and row["pocketcasts_podcast_uuid"]):
+            if row is None or not (row["pocketcasts_episode_uuid"] and row["matched_podcast_uuid"]):
                 return
-            state = client.get_episode_state(row["pocketcasts_episode_uuid"], row["pocketcasts_podcast_uuid"])
+            state = client.get_episode_state(row["pocketcasts_episode_uuid"], row["matched_podcast_uuid"])
             if state:
                 with db:
                     apply_pocketcasts_state(db, episode_id, state.status, state.played_up_to)
             return
-        sources = db.execute("SELECT id, pocketcasts_podcast_uuid FROM sources WHERE enabled = 1 "
-                             "AND pocketcasts_podcast_uuid IS NOT NULL").fetchall()
-        for source in sources:
-            states = client.episode_states(source["pocketcasts_podcast_uuid"])
-            matched = db.execute("SELECT id, pocketcasts_episode_uuid FROM episodes WHERE source_id = ? "
-                                 "AND pocketcasts_episode_uuid IS NOT NULL", (source["id"],)).fetchall()
+        podcasts = [r[0] for r in db.execute(
+            "SELECT DISTINCT sp.podcast_uuid FROM source_podcasts sp JOIN sources s ON s.id = sp.source_id "
+            "WHERE s.enabled = 1")]
+        for podcast_uuid in podcasts:
+            states = client.episode_states(podcast_uuid)
+            matched = db.execute(
+                "SELECT e.id, e.pocketcasts_episode_uuid FROM episodes e "
+                "JOIN pocketcasts_episodes pe ON pe.uuid = e.pocketcasts_episode_uuid "
+                "WHERE pe.podcast_uuid = ?", (podcast_uuid,)).fetchall()
             with db:
                 for ep in matched:
                     state = states.get(ep["pocketcasts_episode_uuid"])
@@ -482,17 +487,17 @@ def match_episode(episode_id: int):
         "JOIN sources s ON s.id = e.source_id WHERE e.id = ?", (episode_id,)).fetchone()
     if episode is None:
         abort(404)
-    candidates = []
-    if episode["pocketcasts_podcast_uuid"]:
-        rows = db.execute(
-            "SELECT pe.*, other.id AS taken_by_id, other.title AS taken_by_title FROM pocketcasts_episodes pe "
-            "LEFT JOIN (SELECT e.id, e.title, e.pocketcasts_episode_uuid FROM episodes e "
-            "           JOIN sources s ON s.id = e.source_id WHERE s.enabled = 1) other "
-            "  ON other.pocketcasts_episode_uuid = pe.uuid AND other.id != ? "
-            "WHERE pe.podcast_uuid = ?", (episode_id, episode["pocketcasts_podcast_uuid"])).fetchall()
-        candidates = sorted(rows, key=lambda r: (r["taken_by_id"] is not None,
-                                                 _days_apart(r["published_at"], episode["published_at"])))
-    return render_template("match.html", episode=episode, candidates=candidates)
+    rows = db.execute(
+        "SELECT pe.*, sp.title AS podcast_title, other.id AS taken_by_id, other.title AS taken_by_title "
+        "FROM pocketcasts_episodes pe JOIN source_podcasts sp ON sp.podcast_uuid = pe.podcast_uuid "
+        "LEFT JOIN (SELECT e.id, e.title, e.pocketcasts_episode_uuid FROM episodes e "
+        "           JOIN sources s ON s.id = e.source_id WHERE s.enabled = 1) other "
+        "  ON other.pocketcasts_episode_uuid = pe.uuid AND other.id != ? "
+        "WHERE sp.source_id = ?", (episode_id, episode["source_id"])).fetchall()
+    candidates = sorted(rows, key=lambda r: (r["taken_by_id"] is not None,
+                                             _days_apart(r["published_at"], episode["published_at"])))
+    several = len({r["podcast_uuid"] for r in rows}) > 1
+    return render_template("match.html", episode=episode, candidates=candidates, several_podcasts=several)
 
 
 @bp.post("/episodes/<int:episode_id>/match")
@@ -521,6 +526,8 @@ def sources():
     db = get_db()
     rows = db.execute(
         "SELECT s.*, (SELECT COUNT(*) FROM episodes e WHERE e.source_id = s.id) AS episode_count, "
+        "(SELECT GROUP_CONCAT(COALESCE(sp.title, 'Linked'), ' + ') FROM source_podcasts sp "
+        " WHERE sp.source_id = s.id) AS podcast_names, "
         "(SELECT COUNT(*) FROM episodes e WHERE e.source_id = s.id AND e.match_method != 'none') AS matched_count "
         "FROM sources s ORDER BY s.id"
     ).fetchall()
@@ -632,21 +639,25 @@ def link_source_form(source_id: int):
     else:
         # Private Patreon feeds first: that's almost always the right target.
         podcasts.sort(key=lambda p: (p.feed_host != "www.patreon.com", p.title.casefold()))
-    return render_template("link_source.html", source=source, podcasts=podcasts)
+    linked = source_podcasts(get_db(), source_id)
+    podcasts.sort(key=lambda p: p.uuid not in linked)  # stable: currently linked ones stay on top
+    return render_template("link_source.html", source=source, podcasts=podcasts, linked=linked)
 
 
 @bp.post("/sources/<int:source_id>/link")
 def link_source_save(source_id: int):
-    uuid = request.form.get("podcast_uuid", "").strip()
-    if not uuid:
-        flash("Pick a podcast.", "error")
+    uuids = [u.strip() for u in request.form.getlist("podcast_uuid") if u.strip()]
+    if not uuids:
+        flash("Tick at least one podcast.", "error")
         return redirect(url_for("main.link_source_form", source_id=source_id))
+    podcasts = [(u, request.form.get(f"title_{u}") or None) for u in dict.fromkeys(uuids)]
     try:
-        link_source(get_db(), source_id, uuid)
+        link_source(get_db(), source_id, podcasts)
     except MatchError as exc:
         flash(str(exc), "error")
         return redirect(url_for("main.sources"))
-    flash("Linked. Use “Refresh” on the Episodes page to load the feed and match episodes.", "ok")
+    names = ", ".join(t or u[:8] for u, t in podcasts)
+    flash(f"Linked to {names}. Use “Refresh” on the Episodes page to load and match episodes.", "ok")
     return redirect(url_for("main.sources"))
 
 

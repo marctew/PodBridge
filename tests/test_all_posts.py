@@ -9,7 +9,7 @@ from test_patreon import client_with
 from test_web_patreon import post, use_client
 
 from podbridge.discovery import discover_all
-from podbridge.linking import MatchError, refresh_all, set_manual_match, widen_source
+from podbridge.linking import MatchError, link_source, refresh_all, set_manual_match, widen_source
 from podbridge.patreon import Post, Progress
 
 
@@ -59,8 +59,8 @@ def test_disabled_source_matches_do_not_block(env):  # noqa: F811
     refresh_all(conn, store, fake_pocketcasts())
     with conn:
         conn.execute("UPDATE sources SET enabled = 0 WHERE id = 1")
-        conn.execute("INSERT INTO sources (label, campaign_id, collection_id, pocketcasts_podcast_uuid) "
-                     "VALUES ('All', '14434926', '', 'pc-podcast-bb')")
+        conn.execute("INSERT INTO sources (label, campaign_id, collection_id) VALUES ('All', '14434926', '')")
+    link_source(conn, 2, "pc-podcast-bb")
     discover_all(conn, store, FakePatreonClient(fixture_posts()))
     [result] = refresh_all(conn, store, fake_pocketcasts())
     assert result.source_id == 2 and result.newly_matched == 3

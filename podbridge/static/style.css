@@ -129,6 +129,11 @@ tr.current td { background: rgba(63, 185, 80, .08); }
 
 .card.wide { grid-column: 1 / -1; order: 10; }
 .inline-form { display: block; }
+.podcast-list { border: 0; margin: 0 0 1rem; padding: 0; display: grid; gap: .1rem; max-height: 26rem; overflow-y: auto; }
+.podcast-option { display: flex; gap: .6rem; align-items: baseline; padding: .4rem .2rem; border-radius: 6px; cursor: pointer; }
+.podcast-option:hover { background: var(--bg); }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+.match-podcast { display: block; font-size: .8rem; }
 tr.disabled td { opacity: .55; }
 .watching { list-style: none; margin: 0 0 .75rem; padding: 0; display: grid; gap: .45rem; }
 .watching li { display: flex; flex-wrap: wrap; gap: .2rem .8rem; align-items: baseline; }

@@ -36,7 +36,7 @@
       <tbody>
       {% for c in candidates %}
         <tr {% if c.uuid == episode.pocketcasts_episode_uuid %}class="current"{% endif %}>
-          <td>{{ c.title }}</td>
+          <td>{{ c.title }}{% if several_podcasts %}<span class="muted match-podcast">{{ c.podcast_title or c.podcast_uuid[:8] }}</span>{% endif %}</td>
           <td class="nowrap">{{ c.published_at | localtime(date_only=True) }}</td>
           <td class="num">{{ c.duration_secs | hms }}</td>
           <td class="nowrap">
@@ -56,7 +56,7 @@
     </table>
   </div>
   {% else %}
-    <p class="muted">No Pocket Casts episodes loaded for this source. Link a podcast on the Sources page, then use “Refresh”.</p>
+    <p class="muted">No Pocket Casts episodes loaded for this source. Link a podcast on the Sources page, then press “Refresh”.</p>
   {% endif %}
 </section>
 {% endblock %}

@@ -144,7 +144,8 @@ def _mark_decided(conn, episode_id: int, patreon_updated_at: str) -> None:
 
 def _process(conn, run_id: int, pocketcasts: PocketCastsClient, dry_run: bool, summary: RunSummary) -> None:
     rows = conn.execute(
-        "SELECT e.id, e.title, e.duration_secs, e.pocketcasts_episode_uuid, s.pocketcasts_podcast_uuid, s.kind, "
+        "SELECT e.id, e.title, e.duration_secs, e.pocketcasts_episode_uuid, s.kind, "
+        "pe.podcast_uuid AS pocketcasts_podcast_uuid, "  # the matched episode's own podcast
         "pe.duration_secs AS pc_duration, p.patreon_position_secs, p.patreon_is_watched, p.patreon_updated_at, "
         "p.pocketcasts_status, p.pocketcasts_position_secs, p.synced_patreon_updated_at "
         "FROM episodes e JOIN sources s ON s.id = e.source_id "

@@ -1,26 +1,35 @@
 {% extends "base.html" %}
-{% block title %}Link podcast{% endblock %}
+{% block title %}Link podcasts{% endblock %}
 {% block content %}
 <p><a href="{{ url_for('main.sources') }}">← Sources</a></p>
 <h1>Link {{ source.label }}</h1>
 <section class="card">
-  <p class="muted">Pick the Pocket Casts podcast that carries this {{ 'channel' if source.kind == 'youtube' else 'collection' }}.
-    {{ 'Closest names are listed first.' if source.kind == 'youtube' else 'Private Patreon feeds are listed first.' }}
-    Changing the podcast clears this source's existing matches.</p>
+  <p class="muted">
+    Tick the Pocket Casts podcast{{ 's' if source.kind == 'youtube' else '' }} this
+    {{ 'channel' if source.kind == 'youtube' else 'source' }} feeds.
+    {% if source.kind == 'youtube' %}
+      One channel can carry several shows (e.g. The News Agents and The News Agents USA). A video whose title ends in
+      “| <em>Podcast name</em>” only matches within that podcast.
+    {% else %}
+      Private Patreon feeds are listed first.
+    {% endif %}
+    Unticking a podcast clears matches into it; other matches are kept.
+  </p>
   {% if podcasts %}
   <form method="post">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <div class="field">
-      <label for="podcast_uuid">Podcast</label>
-      <select id="podcast_uuid" name="podcast_uuid">
-        {% for p in podcasts %}
-          <option value="{{ p.uuid }}" {% if p.uuid == source.pocketcasts_podcast_uuid %}selected{% endif %}>
-            {{ p.title }}{% if p.feed_host == 'www.patreon.com' %} (Patreon feed){% endif %}{% if p.author %} · {{ p.author }}{% endif %}
-          </option>
-        {% endfor %}
-      </select>
-    </div>
-    <button type="submit">Link</button>
+    <fieldset class="podcast-list">
+      <legend class="sr-only">Podcasts</legend>
+      {% for p in podcasts %}
+        <label class="podcast-option">
+          <input type="checkbox" name="podcast_uuid" value="{{ p.uuid }}" {% if p.uuid in linked %}checked{% endif %}>
+          <span>{{ p.title }}{% if p.feed_host == 'www.patreon.com' %} <span class="muted">(Patreon feed)</span>{% endif %}
+            {% if p.author %}<span class="muted">· {{ p.author }}</span>{% endif %}</span>
+          <input type="hidden" name="title_{{ p.uuid }}" value="{{ p.title }}">
+        </label>
+      {% endfor %}
+    </fieldset>
+    <button type="submit">Save</button>
   </form>
   {% else %}
     <p>No subscriptions found in your Pocket Casts account.</p>

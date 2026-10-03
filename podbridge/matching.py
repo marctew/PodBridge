@@ -41,6 +41,7 @@ class PocketSide:
     title: str
     published_at: str | None
     duration_secs: float | None
+    podcast_uuid: str | None = None
 
 
 def normalise_title(title: str) -> str:
@@ -123,23 +124,46 @@ def title_similarity(a: str, b: str) -> float:
     return max(chars, words)
 
 
+_SUFFIX = re.compile(r"\s*[|｜]\s*([^|｜]+)$")
+
+
 def strip_channel_suffix(title: str) -> str:
     """'WTF went on at RAF Fairford? | The News Agents' -> 'WTF went on at RAF Fairford?'"""
-    stripped = re.sub(r"\s*[|｜]\s*[^|｜]+$", "", title)
+    stripped = _SUFFIX.sub("", title)
     return stripped or title
+
+
+def route_by_suffix(title: str, podcast_titles: dict[str, str | None]) -> str | None:
+    """The podcast whose name exactly equals the title's '| suffix', if exactly one does.
+    'Were the Republicans just humiliated? | The News Agents USA' -> The News Agents USA."""
+    match = _SUFFIX.search(title)
+    if not match:
+        return None
+    suffix = normalise_title(match.group(1))
+    hits = [uuid for uuid, name in podcast_titles.items() if name and normalise_title(name) == suffix]
+    return hits[0] if len(hits) == 1 else None
 
 
 def match_episodes_loose(
     source: list[PatreonSide], pocket: list[PocketSide], taken: set[str] = frozenset(),
+    podcast_titles: dict[str, str | None] | None = None,
 ) -> dict[int, tuple[str, str]]:
     """For YouTube sources, where video titles and lengths differ from the podcast's.
 
-    1. Exact normalised title (unique), as for Patreon.
+    0. If the source feeds several podcasts and a video's '| suffix' names one of them,
+       only that podcast's episodes are candidates.
+    1. Exact normalised title (unique), ignoring the '| Channel Name' suffix.
     2. Otherwise Pocket Casts episodes published within 30 hours: a single one wins;
        several are separated by title similarity (best >= 0.45 and 0.15 clear of the next).
     Contested Pocket Casts episodes go to nobody.
     """
     available = [p for p in pocket if p.uuid not in taken]
+    routes = {ep.episode_id: route_by_suffix(ep.title, podcast_titles or {}) for ep in source}
+
+    def allowed(ep: PatreonSide, candidates: list[PocketSide]) -> list[PocketSide]:
+        route = routes.get(ep.episode_id)
+        return [p for p in candidates if route is None or p.podcast_uuid == route]
+
     by_title: dict[str, list[PocketSide]] = defaultdict(list)
     for p in available:
         by_title[normalise_title(p.title)].append(p)
@@ -150,7 +174,7 @@ def match_episodes_loose(
     title_matches: dict[int, tuple[str, str]] = {}
     rest: list[PatreonSide] = []
     for ep in source:
-        same = by_title.get(normalise_title(ep.title), [])
+        same = allowed(ep, by_title.get(normalise_title(ep.title), []))
         if len(same) == 1:
             title_matches[ep.episode_id] = (same[0].uuid, "auto_title")
         else:
@@ -164,7 +188,7 @@ def match_episodes_loose(
         when = _parse_time(ep.published_at)
         if when is None:
             continue
-        near = [p for p in remaining
+        near = [p for p in allowed(ep, remaining)
                 if (t := _parse_time(p.published_at)) is not None and abs(t - when) <= LOOSE_DATE_TOLERANCE]
         if len(near) == 1:
             date_matches[ep.episode_id] = (near[0].uuid, "auto_date")
