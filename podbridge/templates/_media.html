@@ -13,7 +13,7 @@
 {%- endmacro %}
 
 {% macro episode_thumb(e) -%}
-  <div class="thumb">
+  <div class="thumb{{ ' is-played' if e.state == 'played' else '' }}">
     {{ placeholder(e.show_title or e.title) }}
     {{ art_img(e.thumb_key, fallback=e.show_art_key) }}
     {% if e.state == 'unwatched' %}<span class="corner" title="Not started"></span>
