@@ -31,7 +31,7 @@ from .scheduler import (
     backfill_status, next_run_at, restart_countdown, run_date_backfill, run_sync_now, scheduler_running,
     start_date_backfill,
 )
-from .sync import SyncBusy
+from .sync import SyncBusy, set_played, sync_one_episode
 from .services import (
     NotConfigured, art_dir, patreon_client, pocketcasts_client, pocketcasts_configured, pocketcasts_tokens,
     youtube_client,
@@ -245,13 +245,18 @@ def dashboard():
         next_run=next_run_at(),
         scheduler_on=scheduler_running(),
         watching=library.continue_watching(all_shows),
+        up_next=library.up_next(all_shows),
         recent=library.recently_added(all_shows),
     )
 
 
 @bp.get("/library")
 def library_page():
-    return render_template("library.html", shows=shows())
+    all_shows = shows()
+    query = request.args.get("q", "").strip()
+    found_shows, found_episodes = library.search(all_shows, query) if query else ([], [])
+    return render_template("library.html", shows=all_shows, query=query,
+                           found_shows=found_shows, found_episodes=found_episodes)
 
 
 @bp.get("/library/<int:source_id>/<slug>")
@@ -304,6 +309,55 @@ def sync_now():
             flash(f"Sync {summary.status}: {summary.error}", "error")
     nxt = request.form.get("next")
     return redirect(safe_next(nxt) if nxt else url_for("main.dashboard"))
+
+
+@bp.post("/episodes/<int:episode_id>/sync")
+def sync_episode(episode_id: int):
+    """Sync one episode now: fresh progress from its source and from Pocket Casts."""
+    store = get_store()
+    back = safe_next(request.form.get("next") or url_for("main.library_page"))
+    try:
+        pc = pocketcasts_client(store)
+        kind = get_db().execute("SELECT s.kind FROM episodes e JOIN sources s ON s.id = e.source_id "
+                                "WHERE e.id = ?", (episode_id,)).fetchone()
+        if kind is None:
+            abort(404)
+        clients = {"patreon": None, "youtube": None}
+        try:
+            clients[kind[0]] = patreon_client(store) if kind[0] == "patreon" else youtube_client(store)
+        except (NotConfigured, YouTubeError) as exc:
+            flash(str(exc), "error")
+            return redirect(back)
+        summary = sync_one_episode(get_db(), store, episode_id, pc, **clients)
+    except SyncBusy:
+        flash("A sync is running right now. Try again in a moment.", "warn")
+        return redirect(back)
+    except (NotConfigured, SecretError) as exc:
+        flash(str(exc) if isinstance(exc, NotConfigured) else "Stored credentials can't be decrypted.", "error")
+        return redirect(back)
+    if summary.status != "ok":
+        flash(f"Sync {summary.status}: {summary.error}", "error")
+    else:
+        event = get_db().execute("SELECT detail FROM sync_events WHERE run_id = ? ORDER BY id DESC LIMIT 1",
+                                 (summary.run_id,)).fetchone()
+        flash(event["detail"] if event else "Nothing to sync: no progress on the source side yet.", "ok")
+    return redirect(back)
+
+
+@bp.post("/episodes/<int:episode_id>/played")
+def set_played_route(episode_id: int):
+    store = get_store()
+    back = safe_next(request.form.get("next") or url_for("main.library_page"))
+    played = request.form.get("played") == "1"
+    try:
+        flash(set_played(get_db(), episode_id, played, pocketcasts_client(store)) + ".", "ok")
+    except SyncBusy:
+        flash("A sync is running right now. Try again in a moment.", "warn")
+    except ValueError as exc:
+        flash(str(exc), "error")
+    except POCKETCASTS_FAILURES as exc:
+        flash(pocketcasts_failure(store, exc), "error")
+    return redirect(back)
 
 
 @bp.get("/activity")

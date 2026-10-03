@@ -72,6 +72,7 @@ class PatreonClient(Protocol):
     def check_session(self) -> bool: ...
     def list_posts(self, campaign_id: str, collection_id: str | None) -> list[Post]: ...
     def list_collections(self, campaign_id: str) -> list[Collection]: ...
+    def get_post(self, post_id: str) -> Post | None: ...
 
 
 # --- parsing (pure functions, tested against fixtures) ---
@@ -229,6 +230,17 @@ class HttpPatreonClient:
                 break
             params["page[cursor]"] = cursor
         return posts
+
+    def get_post(self, post_id: str) -> Post | None:
+        """One post with its media ID and progress (used to sync a single episode on demand)."""
+        status, body = self._get(f"/api/posts/{post_id}", {"fields[post]": POST_FIELDS, **JSONAPI})
+        if status == 401:
+            raise PatreonSessionExpired("Patreon session rejected while reading a post")
+        if status == 404:
+            return None
+        if status != 200:
+            raise PatreonError(f"Post returned HTTP {status}")
+        return parse_post(_dig(body, "data"))
 
     def list_collections(self, campaign_id: str) -> list[Collection]:
         params = {"filter[campaign_id]": campaign_id, "fields[collection]": "title,num_posts", **JSONAPI}

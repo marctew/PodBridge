@@ -1,8 +1,7 @@
 {% extends "base.html" %}
-{% from "_media.html" import art_img, placeholder, episode_thumb, open_with %}
+{% from "_media.html" import art_img, placeholder, episode_row with context %}
 {% block title %}{{ show.title }}{% endblock %}
 {% block content %}
-{% set method_labels = {'auto_title': 'Title', 'auto_duration': 'Date + length', 'auto_date': 'Fuzzy', 'manual': 'Manual'} %}
 <p><a href="{{ url_for('main.library_page') }}">← Library</a></p>
 
 <section class="hero">
@@ -31,36 +30,7 @@
 
 {% if episodes %}
 <ol class="ep-list">
-  {% for e in episodes %}
-    <li class="ep-row">
-      <a class="ep-row-thumb" href="{{ url_for('main.go_episode', episode_id=e.id) if e.state == 'in_progress' else (e.patreon_url or '#') }}"
-         {% if e.state == 'in_progress' and e.resume_url %}data-direct="{{ e.resume_url }}"{% endif %}
-         {{ open_with(e, url_for('main.go_episode', episode_id=e.id) if e.state == 'in_progress' else (e.patreon_url or '#')) }}
-         target="_blank" rel="noopener" aria-label="Open {{ e.title }}">{{ episode_thumb(e) }}</a>
-      <div class="ep-row-body">
-        <h3>{{ e.title }}</h3>
-        <p class="muted">
-          {{ e.published_at | localtime(date_only=True) }}{% if e.duration_secs %} · {{ e.duration_secs | hms }}{% endif %}
-          {% if e.state == 'in_progress' %} · <span class="warn-text">{{ e.resume.position_secs | hms }} ({{ 'Pocket Casts' if e.resume.source == 'pocketcasts' else e.source_name }})</span>
-          {% elif e.state == 'played' %} · Played{% endif %}
-        </p>
-        <p class="ep-row-actions">
-          {% if e.resume_url and e.resume.position_secs > 0 %}
-            <a href="{{ url_for('main.go_episode', episode_id=e.id) }}" target="_blank" rel="noopener"
-               data-direct="{{ e.resume_url }}">Continue on {{ e.source_name }}</a>
-          {% elif e.patreon_url %}
-            <a href="{{ e.patreon_url }}" target="_blank" rel="noopener">Open on {{ e.source_name }}</a>
-          {% endif %}
-          {% if e.pc_web_url %}
-            <a href="{{ e.pc_web_url }}" target="_blank" rel="noopener" data-direct="{{ e.pc_app_url }}">Open in Pocket Casts</a>
-          {% endif %}
-          <a class="match-link" href="{{ url_for('main.match_episode', episode_id=e.id, next=request.full_path.rstrip('?')) }}">
-            {% if e.match_method != 'none' %}Pocket Casts: {{ method_labels[e.match_method] }} match
-            {% elif e.match_locked %}No Pocket Casts match{% else %}<span class="warn-text">Unmatched</span>{% endif %}</a>
-        </p>
-      </div>
-    </li>
-  {% endfor %}
+  {% for e in episodes %}{{ episode_row(e) }}{% endfor %}
 </ol>
 {% else %}
   <p class="muted">No episodes {{ 'match this filter' if current != 'all' else 'yet' }}.</p>

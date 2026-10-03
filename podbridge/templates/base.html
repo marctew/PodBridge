@@ -9,6 +9,9 @@
   <meta name="apple-mobile-web-app-title" content="PodBridge">
   <title>{% block title %}PodBridge{% endblock %} · PodBridge</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css', v=asset_version) }}">
+  <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='icons/favicon-32.png') }}">
+  <link rel="apple-touch-icon" href="{{ url_for('static', filename='icons/apple-touch-icon.png') }}">
+  <link rel="manifest" href="{{ url_for('static', filename='manifest.webmanifest') }}">
 </head>
 <body class="{{ 'signed-in' if session.auth else '' }}">
   {% if session.auth %}

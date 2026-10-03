@@ -56,6 +56,10 @@ class FakePatreonClient:
     def list_collections(self, campaign_id: str) -> list[Collection]:
         return list(self.collections)
 
+    def get_post(self, post_id: str) -> Post | None:
+        self.list_calls.append(("post", post_id))
+        return next((p for p in self.posts if p.post_id == post_id), None)
+
 
 class FakePocketCastsClient:
     def __init__(self, podcasts: list[Podcast] | None = None,

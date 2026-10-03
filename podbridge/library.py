@@ -3,7 +3,9 @@ with resume positions, progress and artwork keys for the Plex-style pages."""
 
 from __future__ import annotations
 
+import re
 import sqlite3
+import unicodedata
 from dataclasses import dataclass, field
 from datetime import datetime
 
@@ -132,6 +134,46 @@ def continue_watching(shows: list[Show], limit: int | None = 12) -> list[dict]:
     eps = [e for e in all_episodes(shows) if e["state"] == "in_progress" and e["resume_url"]]
     eps.sort(key=lambda e: e["touched"].timestamp() if e["touched"] else 0, reverse=True)
     return eps[:limit] if limit else eps
+
+
+def up_next(shows: list[Show], limit: int = 12) -> list[dict]:
+    """Like Plex's On Deck: for each show you've played or started something in, the first
+    unwatched episode published after the newest one you've touched. Shows you were active in
+    most recently come first."""
+    picks: list[tuple[float, dict]] = []
+    for show in shows:
+        dated = sorted((e for e in show.episodes if e["published_at"]), key=lambda e: _ts(e["published_at"]))
+        touched = [i for i, e in enumerate(dated) if e["state"] in ("played", "in_progress")]
+        if not touched:
+            continue
+        following = next((e for e in dated[touched[-1] + 1:] if e["state"] == "unwatched"), None)
+        if following is None:
+            continue
+        last_active = max((e["touched"].timestamp() for e in show.episodes if e["touched"]), default=0.0)
+        picks.append((last_active, following))
+    picks.sort(key=lambda pick: pick[0], reverse=True)
+    return [episode for _, episode in picks[:limit]]
+
+
+def search(shows: list[Show], query: str, limit: int = 100) -> tuple[list[Show], list[dict]]:
+    """Shows and episodes whose titles contain every word of the query (accent, case and
+    apostrophe insensitive), newest episodes first."""
+    words = fold(query).split()
+    if not words:
+        return [], []
+    matching_shows = [s for s in shows if all(w in fold(s.title) for w in words)]
+    hits = [e for e in all_episodes(shows)
+            if all(w in fold(f"{e['title']} {e.get('show_title', '')}") for w in words)]
+    hits.sort(key=lambda e: _ts(e["published_at"] or ""), reverse=True)
+    return matching_shows, hits[:limit]
+
+
+def fold(text: str) -> str:
+    """Lower-case, strip accents and quote marks, normalise dashes: 'Pierre’s' -> 'pierres'."""
+    text = unicodedata.normalize("NFKD", text or "")
+    text = "".join(ch for ch in text if not unicodedata.combining(ch))
+    text = re.sub(r"[‘’“”'\"]", "", text).replace("–", "-").replace("—", "-")
+    return text.casefold()
 
 
 def recently_added(shows: list[Show], limit: int = 16) -> list[dict]:

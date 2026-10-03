@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import mimetypes
 from datetime import datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -32,6 +33,8 @@ def create_app(config: Config | None = None) -> Flask:
     # Behind a single reverse proxy.
     app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
     app.extensions["secret_box"] = SecretBox(config.encryption_key)
+
+    mimetypes.add_type("application/manifest+json", ".webmanifest")
 
     # Cache-busting: the stylesheet URL carries a hash of its contents, so browsers (Safari
     # especially) fetch the new file after every update instead of reusing a stale copy.

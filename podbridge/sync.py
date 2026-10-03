@@ -21,12 +21,15 @@ from pathlib import Path
 
 from .crypto import SecretError
 from .db import utcnow
-from .discovery import discover_all, discover_youtube_all, has_sources, note_youtube_expiry
+from .discovery import (
+    check_patreon_session, discover_all, discover_youtube_all, has_sources, note_youtube_expiry,
+    refresh_youtube_episode, upsert_post,
+)
 from .http import TransportError
-from .linking import refresh_all
+from .linking import apply_pocketcasts_state, refresh_all
 from .patreon import PatreonClient, PatreonError, PatreonSessionExpired
 from .pocketcasts import PocketCastsClient, PocketCastsError
-from .rules import decide, interpret_patreon
+from .rules import PC_PLAYED, PC_UNPLAYED, decide, interpret_patreon
 from .settings_store import SettingsStore
 from .youtube import YouTubeClient, YouTubeError, YouTubeSessionExpired
 
@@ -151,7 +154,11 @@ def _mark_decided(conn, episode_id: int, patreon_updated_at: str) -> None:
                  (patreon_updated_at, utcnow(), episode_id))
 
 
-def _process(conn, run_id: int, pocketcasts: PocketCastsClient, dry_run: bool, summary: RunSummary) -> None:
+def _process(conn, run_id: int, pocketcasts: PocketCastsClient, dry_run: bool, summary: RunSummary,
+             episode_id: int | None = None, force: bool = False) -> None:
+    """Apply the rules to every changed episode, or to one episode (`episode_id`). `force`
+    re-decides even if the source progress hasn't changed since the last decision."""
+    only_one = " AND e.id = ?" if episode_id is not None else ""
     rows = conn.execute(
         "SELECT e.id, e.title, e.duration_secs, e.pocketcasts_episode_uuid, s.kind, "
         "pe.podcast_uuid AS pocketcasts_podcast_uuid, "  # the matched episode's own podcast
@@ -160,13 +167,14 @@ def _process(conn, run_id: int, pocketcasts: PocketCastsClient, dry_run: bool, s
         "FROM episodes e JOIN sources s ON s.id = e.source_id "
         "JOIN progress p ON p.episode_id = e.id "
         "LEFT JOIN pocketcasts_episodes pe ON pe.uuid = e.pocketcasts_episode_uuid "
-        "WHERE s.enabled = 1 AND p.patreon_updated_at IS NOT NULL ORDER BY e.published_at DESC"
+        f"WHERE s.enabled = 1 AND p.patreon_updated_at IS NOT NULL{only_one} ORDER BY e.published_at DESC",
+        (episode_id,) if episode_id is not None else (),
     ).fetchall()
     prefix = "Dry run: would " if dry_run else ""
 
     for row in rows:
         summary.checked += 1
-        if row["patreon_updated_at"] == row["synced_patreon_updated_at"]:
+        if not force and row["patreon_updated_at"] == row["synced_patreon_updated_at"]:
             continue  # unchanged since last decision (spec rule 2)
         episode_id = row["id"]
         src = "YouTube" if row["kind"] == "youtube" else "Patreon"
@@ -215,3 +223,101 @@ def _process(conn, run_id: int, pocketcasts: PocketCastsClient, dry_run: bool, s
             if not (writes and dry_run):
                 # A dry-run "would write" stays pending so a real run still acts on it.
                 _mark_decided(conn, episode_id, row["patreon_updated_at"])
+
+
+# --- one episode, on demand ---
+
+def _episode(conn, episode_id: int):
+    return conn.execute(
+        "SELECT e.*, s.kind, s.id AS source_id, pe.podcast_uuid AS matched_podcast_uuid, "
+        "pe.duration_secs AS pc_duration, p.patreon_updated_at "
+        "FROM episodes e JOIN sources s ON s.id = e.source_id "
+        "LEFT JOIN pocketcasts_episodes pe ON pe.uuid = e.pocketcasts_episode_uuid "
+        "LEFT JOIN progress p ON p.episode_id = e.id WHERE e.id = ?", (episode_id,)).fetchone()
+
+
+def _refresh_pocketcasts(conn, pocketcasts: PocketCastsClient, ep) -> None:
+    state = pocketcasts.get_episode_state(ep["pocketcasts_episode_uuid"], ep["matched_podcast_uuid"])
+    if state is None:
+        return
+    with conn:
+        apply_pocketcasts_state(conn, ep["id"], state.status, state.played_up_to)
+        conn.execute("UPDATE pocketcasts_episodes SET playing_status = ?, played_up_to = ? WHERE uuid = ?",
+                     (state.status, state.played_up_to, ep["pocketcasts_episode_uuid"]))
+
+
+def sync_one_episode(conn, store: SettingsStore, episode_id: int, pocketcasts: PocketCastsClient,
+                     patreon: PatreonClient | None = None, youtube: YouTubeClient | None = None) -> RunSummary:
+    """Fresh source progress + fresh Pocket Casts state for one episode, then the usual rules,
+    applied even if the source hasn't changed since the last decision. Respects dry run."""
+    if not _lock.acquire(blocking=False):
+        raise SyncBusy("A sync is already running")
+    try:
+        ep = _episode(conn, episode_id)
+        if ep is None:
+            raise ValueError("No such episode")
+        dry_run = store.get_bool("dry_run")
+        with conn:
+            run_id = conn.execute("INSERT INTO sync_runs (started_at, tier, dry_run, status) "
+                                  "VALUES (?, 'manual', ?, 'running')", (utcnow(), int(dry_run))).lastrowid
+        summary = RunSummary(run_id=run_id, status="running", dry_run=dry_run)
+        try:
+            if ep["kind"] == "youtube":
+                if youtube is None:
+                    raise YouTubeError("YouTube isn't set up")
+                refresh_youtube_episode(conn, store, youtube, ep)
+            else:
+                if patreon is None:
+                    raise PatreonError("Patreon isn't set up")
+                if not check_patreon_session(store, patreon):  # logged-out pages look like real data
+                    raise PatreonSessionExpired("Patreon session is not logged in")
+                post = patreon.get_post(ep["patreon_post_id"])
+                if post is not None:
+                    with conn:
+                        upsert_post(conn, ep["source_id"], post)
+            if ep["pocketcasts_episode_uuid"] and ep["matched_podcast_uuid"]:
+                _refresh_pocketcasts(conn, pocketcasts, ep)
+            _process(conn, run_id, pocketcasts, dry_run, summary, episode_id=episode_id, force=True)
+            summary.status = "ok"
+        except (PatreonSessionExpired, YouTubeSessionExpired) as exc:
+            summary.status, summary.error = "aborted", f"Session expired: {exc}"
+        except (PatreonError, YouTubeError, PocketCastsError, TransportError, SecretError) as exc:
+            summary.status, summary.error = "error", f"{type(exc).__name__}: {exc}"
+        with conn:
+            conn.execute("UPDATE sync_runs SET finished_at = ?, status = ?, episodes_checked = ?, "
+                         "episodes_updated = ?, error = ? WHERE id = ?",
+                         (utcnow(), summary.status, summary.checked, summary.updated, summary.error, run_id))
+        return summary
+    finally:
+        _lock.release()
+
+
+def set_played(conn, episode_id: int, played: bool, pocketcasts: PocketCastsClient) -> str:
+    """Mark a matched episode played (at its end) or unplayed (back to the start) in Pocket Casts.
+    An explicit choice, so it's written even in dry run, and the episode is marked as decided so
+    the next sync doesn't immediately push the source's position back over it. Returns a summary."""
+    if not _lock.acquire(blocking=False):
+        raise SyncBusy("A sync is already running")
+    try:
+        ep = _episode(conn, episode_id)
+        if ep is None or not (ep["pocketcasts_episode_uuid"] and ep["matched_podcast_uuid"]):
+            raise ValueError("This episode isn't matched to a Pocket Casts episode")
+        duration = int(ep["pc_duration"] or ep["duration_secs"] or 0)
+        status, position = (PC_PLAYED, duration) if played else (PC_UNPLAYED, 0)
+        pocketcasts.update_episode(ep["pocketcasts_episode_uuid"], ep["matched_podcast_uuid"],
+                                   position=position, duration=duration, status=status)
+        detail = "Marked played in Pocket Casts (by you)" if played else "Marked unplayed in Pocket Casts (by you)"
+        with conn:
+            apply_pocketcasts_state(conn, episode_id, status, float(position))
+            conn.execute("UPDATE pocketcasts_episodes SET playing_status = ?, played_up_to = ? WHERE uuid = ?",
+                         (status, position, ep["pocketcasts_episode_uuid"]))
+            if ep["patreon_updated_at"]:
+                _mark_decided(conn, episode_id, ep["patreon_updated_at"])
+            run_id = conn.execute(
+                "INSERT INTO sync_runs (started_at, finished_at, tier, dry_run, status, episodes_checked, "
+                "episodes_updated) VALUES (?, ?, 'manual', 0, 'ok', 1, 1)", (utcnow(), utcnow())).lastrowid
+            conn.execute("INSERT INTO sync_events (run_id, episode_id, action, detail) VALUES (?, ?, ?, ?)",
+                         (run_id, episode_id, "mark_played" if played else "set_position", detail))
+        return detail
+    finally:
+        _lock.release()

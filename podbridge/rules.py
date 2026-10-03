@@ -16,6 +16,7 @@ PLAYED_TAIL_SECS = 60.0
 AHEAD_THRESHOLD_SECS = 15.0  # never rewind; only write when Patreon is this far ahead
 PC_PLAYED = 3
 PC_IN_PROGRESS = 2
+PC_UNPLAYED = 1
 
 
 @dataclass(frozen=True)

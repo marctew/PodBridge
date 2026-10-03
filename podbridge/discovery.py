@@ -240,6 +240,25 @@ def backfill_youtube_dates(conn: sqlite3.Connection, public_client, budget: int 
     return filled
 
 
+def refresh_youtube_episode(conn: sqlite3.Connection, store: SettingsStore, client, episode) -> bool:
+    """Re-read one YouTube episode's progress from watch history. Returns False if the video
+    isn't on the first history page (its stored progress is kept)."""
+    from .youtube import YouTubeSessionExpired, watch_url
+
+    if not check_youtube_session(store, client):
+        raise YouTubeSessionExpired("YouTube cookies are no longer signed in")
+    item = next((i for i in client.history() if i.video_id == episode["patreon_post_id"]), None)
+    if item is None or item.percent is None:
+        return False
+    progress = _youtube_progress(conn, episode["source_id"], item.video_id, item.percent, episode["duration_secs"])
+    post = Post(post_id=item.video_id, title=episode["title"], published_at=episode["published_at"],
+                url=watch_url(item.video_id), post_type="youtube", media_id=item.video_id,
+                duration_secs=episode["duration_secs"], progress=progress)
+    with conn:
+        upsert_post(conn, episode["source_id"], post)
+    return True
+
+
 def discover_youtube_all(conn: sqlite3.Connection, store: SettingsStore, client,
                          detail_budget: int | None = None) -> list[DiscoveryResult]:
     """Every recent upload of each enabled YouTube channel source (about 100, from the uploads

@@ -1,6 +1,6 @@
 {% extends "base.html" %}
-{% from "_media.html" import show_tile %}
-{% block title %}Library{% endblock %}
+{% from "_media.html" import show_tile, episode_row with context %}
+{% block title %}{{ 'Search' if query else 'Library' }}{% endblock %}
 {% block content %}
 <div class="page-head">
   <h1>Library</h1>
@@ -10,7 +10,26 @@
     <button type="submit" class="secondary">Refresh</button>
   </form>
 </div>
-{% if shows %}
+
+<form method="get" class="search-bar" role="search">
+  <label for="q" class="sr-only">Search the library</label>
+  <input id="q" name="q" type="search" value="{{ query }}" placeholder="Search episodes and shows" autocomplete="off">
+  <button type="submit" class="secondary">Search</button>
+</form>
+
+{% if query %}
+  {% if found_shows %}
+    <h2 class="section-title">Shows</h2>
+    <div class="show-grid">{% for show in found_shows %}{{ show_tile(show) }}{% endfor %}</div>
+  {% endif %}
+  <h2 class="section-title">Episodes{% if found_episodes %} <span class="muted">{{ found_episodes | length }}{{ '+' if found_episodes | length >= 100 else '' }}</span>{% endif %}</h2>
+  {% if found_episodes %}
+    <ol class="ep-list">{% for e in found_episodes %}{{ episode_row(e, with_show=True) }}{% endfor %}</ol>
+  {% else %}
+    <p class="muted">No episodes match “{{ query }}”.</p>
+  {% endif %}
+  <p><a href="{{ url_for('main.library_page') }}">← All shows</a></p>
+{% elif shows %}
   <div class="show-grid">
     {% for show in shows %}{{ show_tile(show) }}{% endfor %}
   </div>

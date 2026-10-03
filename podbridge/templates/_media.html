@@ -45,6 +45,61 @@
   </a>
 {%- endmacro %}
 
+{% set method_labels = {'auto_title': 'Title', 'auto_duration': 'Date + length', 'auto_date': 'Fuzzy', 'manual': 'Manual'} %}
+
+{% macro episode_row(e, with_show=False) -%}
+  {#- One episode in a list (show pages, search results). Import "with context": uses request. -#}
+  {%- set href = url_for('main.go_episode', episode_id=e.id) if e.state == 'in_progress' else (e.patreon_url or '#') -%}
+  {%- set back = request.full_path.rstrip('?') -%}
+  <li class="ep-row" id="episode-{{ e.id }}">
+    <a class="ep-row-thumb" href="{{ href }}"
+       {% if e.state == 'in_progress' and e.resume_url %}data-direct="{{ e.resume_url }}"{% endif %}
+       {{ open_with(e, href) }} target="_blank" rel="noopener" aria-label="Open {{ e.title }}">{{ episode_thumb(e) }}</a>
+    <div class="ep-row-body">
+      <h3>{{ e.title }}</h3>
+      <p class="muted">
+        {% if with_show %}{{ e.show_title }} · {% endif %}
+        {{ e.published_at | localtime(date_only=True) }}{% if e.duration_secs %} · {{ e.duration_secs | hms }}{% endif %}
+        {% if e.state == 'in_progress' %} · <span class="warn-text">{{ e.resume.position_secs | hms }} ({{ 'Pocket Casts' if e.resume.source == 'pocketcasts' else e.source_name }})</span>
+        {% elif e.state == 'played' %} · Played{% endif %}
+      </p>
+      <p class="ep-row-actions">
+        {% if e.resume_url and e.resume.position_secs > 0 %}
+          <a href="{{ url_for('main.go_episode', episode_id=e.id) }}" target="_blank" rel="noopener"
+             data-direct="{{ e.resume_url }}">Continue on {{ e.source_name }}</a>
+        {% elif e.patreon_url %}
+          <a href="{{ e.patreon_url }}" target="_blank" rel="noopener">Open on {{ e.source_name }}</a>
+        {% endif %}
+        {% if e.pc_web_url %}
+          <a href="{{ e.pc_web_url }}" target="_blank" rel="noopener" data-direct="{{ e.pc_app_url }}">Open in Pocket Casts</a>
+        {% endif %}
+        <a class="match-link" href="{{ url_for('main.match_episode', episode_id=e.id, next=back) }}">
+          {% if e.match_method != 'none' %}Pocket Casts: {{ method_labels[e.match_method] }} match
+          {% elif e.match_locked %}No Pocket Casts match{% else %}<span class="warn-text">Unmatched</span>{% endif %}</a>
+      </p>
+      {% if e.pc_web_url %}
+      <form method="post" class="ep-row-tools">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="next" value="{{ back }}#episode-{{ e.id }}">
+        <button type="submit" class="chip" formaction="{{ url_for('main.sync_episode', episode_id=e.id) }}"
+                title="Read the latest progress for this episode and update Pocket Casts now">↻ Sync now</button>
+        {% if e.pocketcasts_status == 3 %}
+          <button type="submit" class="chip" formaction="{{ url_for('main.set_played_route', episode_id=e.id) }}"
+                  name="played" value="0" title="Mark unplayed in Pocket Casts, back to the start">Mark unplayed</button>
+        {% else %}
+          <button type="submit" class="chip" formaction="{{ url_for('main.set_played_route', episode_id=e.id) }}"
+                  name="played" value="1" title="Mark played in Pocket Casts">✓ Mark played</button>
+          {% if e.pocketcasts_status == 2 %}
+          <button type="submit" class="chip" formaction="{{ url_for('main.set_played_route', episode_id=e.id) }}"
+                  name="played" value="0" title="Mark unplayed in Pocket Casts, back to the start">Mark unplayed</button>
+          {% endif %}
+        {% endif %}
+      </form>
+      {% endif %}
+    </div>
+  </li>
+{%- endmacro %}
+
 {% macro show_tile(show) -%}
   <a class="show-tile" href="{{ url_for('main.show_page', source_id=show.source_id, slug=show.slug) }}">
     <div class="poster">

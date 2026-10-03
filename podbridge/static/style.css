@@ -242,6 +242,20 @@ input[type=search] {
 .table-card > p[hidden] { display: none; }
 .backfill { margin: .25rem 0 .75rem; align-items: center; }
 .flash-inline.bad { color: var(--bad); font-size: .875rem; }
+/* Library search */
+.search-bar { display: flex; gap: .6rem; margin: 0 0 1.25rem; }
+.search-bar input { flex: 1; max-width: 32rem; }
+.section-title { margin: 1.25rem 0 .75rem; font-size: 1.05rem; }
+
+/* Per-episode tools (Sync now, Mark played/unplayed) */
+.ep-row-tools { display: flex; gap: .4rem; flex-wrap: wrap; margin-top: .35rem; }
+button.chip {
+  background: transparent; color: var(--muted); border: 1px solid var(--border); border-radius: 999px;
+  padding: .2rem .7rem; font-size: .8rem; font-weight: 500; min-height: 0;
+}
+button.chip:hover { color: var(--text); border-color: var(--muted); filter: none; }
+@media (max-width: 640px) { button.chip { min-height: 34px; padding: .3rem .8rem; } }
+
 /* Problem banner: shown on every page while something needs fixing */
 .problems { background: rgba(248, 81, 73, .12); border-bottom: 1px solid rgba(248, 81, 73, .45); }
 .problems p {
