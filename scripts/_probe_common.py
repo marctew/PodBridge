@@ -6,6 +6,7 @@ field paths, types, booleans, counts and a small whitelist of enum-like values.
 
 from __future__ import annotations
 
+import gzip
 import json
 import os
 import sys
@@ -86,21 +87,56 @@ class Http:
         if body is not None:
             data = json.dumps(body).encode()
             headers["Content-Type"] = "application/json"
+        headers.setdefault("Accept-Encoding", "gzip")
         req = urllib.request.Request(self.base + path, data=data, headers=headers, method=method)
         try:
-            with urllib.request.urlopen(req, timeout=30) as resp:
-                status, raw = resp.status, resp.read()
-        except urllib.error.HTTPError as exc:
-            status, raw = exc.code, exc.read()
-        except urllib.error.URLError as exc:
-            return 0, {"_error": type(exc.reason).__name__}
+            status, raw, resp_headers = fetch(req)
+        except OSError as exc:
+            return 0, {"_error": describe_error(exc)}
         if status in (403, 429):
             print(f"  ! HTTP {status}: backing off, stopping this probe run to be gentle.")
             sys.exit(2)
         try:
             return status, json.loads(raw) if raw else None
         except ValueError:
-            return status, {"_non_json": True}
+            return status, {"_non_json": describe_body(raw, resp_headers)}
+
+
+def fetch(req: urllib.request.Request) -> tuple[int, bytes, Any]:
+    """Perform a request; returns (status, decompressed body, headers)."""
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            status, raw, headers = resp.status, resp.read(), resp.headers
+    except urllib.error.HTTPError as exc:
+        status, raw, headers = exc.code, exc.read(), exc.headers
+    if raw[:2] == b"\x1f\x8b" or (headers.get("Content-Encoding") or "").lower() == "gzip":
+        try:
+            raw = gzip.decompress(raw)
+        except OSError:
+            pass
+    return status, raw, headers
+
+
+def describe_error(exc: OSError) -> str:
+    reason = getattr(exc, "reason", exc)
+    return type(reason).__name__
+
+
+def describe_body(raw: bytes, headers: Any) -> str:
+    """Classify a non-JSON body without echoing its contents."""
+    head = raw[:300].lstrip().lower()
+    if not raw:
+        kind = "empty"
+    elif head.startswith(b"<?xml") or head.startswith(b"<rss"):
+        kind = "xml"
+    elif head.startswith(b"<!doctype html") or head.startswith(b"<html"):
+        kind = "html (challenge page?)" if b"cloudflare" in raw[:5000].lower() or b"challenge" in raw[:5000].lower() else "html"
+    elif raw[:2] == b"\x1f\x8b":
+        kind = "gzip (undecodable)"
+    else:
+        kind = "other"
+    return (f"kind={kind}, bytes={len(raw)}, content-type={headers.get('Content-Type')!r}, "
+            f"content-encoding={headers.get('Content-Encoding')!r}")
 
 
 def field_paths(obj: Any, prefix: str = "") -> list[str]:

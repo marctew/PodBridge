@@ -19,7 +19,9 @@ import urllib.request
 from typing import Any
 from urllib.parse import urlparse
 
-from _probe_common import Http, dig, heading, load_dotenv, require_env
+from _probe_common import (
+    BROWSER_UA, Http, describe_body, describe_error, dig, fetch, heading, load_dotenv, require_env,
+)
 from probe_pocketcasts import API, CACHE, MATCH, PC_HEADERS, probe_login, short
 
 load_dotenv()
@@ -40,6 +42,9 @@ def find_episode_lists(obj: Any, path: str = "") -> list[tuple[str, list]]:
 def report(label: str, status: int, body: Any, state_uuids: set[str]) -> None:
     keys = sorted(body) if isinstance(body, dict) else type(body).__name__
     print(f"  [{label}] HTTP {status}, top-level keys: {keys}")
+    for diag in ("_non_json", "_error"):
+        if isinstance(body, dict) and diag in body:
+            print(f"    {diag}: {body[diag]}")
     for path, eps in find_episode_lists(body):
         uuids = {e.get("uuid") for e in eps if isinstance(e, dict)}
         titled = sum(bool(isinstance(e, dict) and e.get("title")) for e in eps)
@@ -53,16 +58,19 @@ def report(label: str, status: int, body: Any, state_uuids: set[str]) -> None:
 def probe_rss(feed_url: str) -> None:
     heading("RSS feed (subscription url field)")
     time.sleep(1.5)
-    req = urllib.request.Request(feed_url, headers={"User-Agent": "PodBridge-probe"})
+    req = urllib.request.Request(
+        feed_url, headers={"User-Agent": BROWSER_UA, "Accept-Encoding": "gzip"}
+    )
     try:
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            status, text = resp.status, resp.read().decode("utf-8", "replace")
-    except Exception as exc:  # noqa: BLE001 - report the type only, never the URL
-        print(f"  fetch failed: {type(exc).__name__}")
+        status, raw, headers = fetch(req)
+    except OSError as exc:  # report the type only, never the URL
+        print(f"  fetch failed: {describe_error(exc)}")
         return
+    text = raw.decode("utf-8", "replace")
     items = re.findall(r"<item\b.*?</item>", text, re.S)
     has_guid = sum("<guid" in i for i in items)
     print(f"  HTTP {status}, items={len(items)}, items with guid={has_guid}")
+    print(f"    body: {describe_body(raw, headers)}")
     for item in items[:3]:
         title = re.search(r"<title>(?:<!\[CDATA\[)?(.*?)(?:\]\]>)?</title>", item, re.S)
         print(f"    {title.group(1).strip() if title else '?'!r}")
