@@ -36,6 +36,7 @@
               {% if e.patreon_url %}<a href="{{ e.patreon_url }}" target="_blank" rel="noopener">{{ e.title }}</a>{% else %}{{ e.title }}{% endif %}
               {% if e.resume_url and e.resume.position_secs > 0 %}
                 <a class="resume" href="{{ url_for('main.go_episode', episode_id=e.id) }}" target="_blank" rel="noopener"
+                   data-direct="{{ e.resume_url }}"
                    title="Opens {{ e.source_name }} at the further of the two positions">Continue on {{ e.source_name }} at {{ e.resume.position_secs | hms }}</a>
               {% endif %}
             </td>

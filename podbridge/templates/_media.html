@@ -25,7 +25,8 @@
 
 {% macro episode_card(e, subtitle) -%}
   {%- set href = url_for('main.go_episode', episode_id=e.id) if e.state == 'in_progress' else (e.patreon_url or url_for('main.episodes')) -%}
-  <a class="ep-card" href="{{ href }}" target="_blank" rel="noopener" title="{{ e.title }}">
+  <a class="ep-card" href="{{ href }}" target="_blank" rel="noopener" title="{{ e.title }}"
+     {% if e.state == 'in_progress' and e.resume_url %}data-direct="{{ e.resume_url }}"{% endif %}>
     {{ episode_thumb(e) }}
     <span class="ep-title">{{ e.title }}</span>
     <span class="ep-sub">{{ subtitle }}</span>

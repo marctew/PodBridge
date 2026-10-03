@@ -14,7 +14,8 @@
       <h1>{{ show.title }}</h1>
       <p class="muted">{{ show.episodes | length }} episodes · {{ show.in_progress }} in progress · {{ show.unwatched }} not started</p>
       {% if up_next %}
-        <a class="button" href="{{ url_for('main.go_episode', episode_id=up_next.id) }}" target="_blank" rel="noopener">
+        <a class="button" href="{{ url_for('main.go_episode', episode_id=up_next.id) }}" target="_blank" rel="noopener"
+           data-direct="{{ up_next.resume_url }}">
           ▶ Continue “{{ up_next.title | truncate(48) }}” at {{ up_next.resume.position_secs | hms }}</a>
       {% endif %}
     </div>
@@ -33,6 +34,7 @@
   {% for e in episodes %}
     <li class="ep-row">
       <a class="ep-row-thumb" href="{{ url_for('main.go_episode', episode_id=e.id) if e.state == 'in_progress' else (e.patreon_url or '#') }}"
+         {% if e.state == 'in_progress' and e.resume_url %}data-direct="{{ e.resume_url }}"{% endif %}
          target="_blank" rel="noopener" aria-label="Open {{ e.title }}">{{ episode_thumb(e) }}</a>
       <div class="ep-row-body">
         <h3>{{ e.title }}</h3>
@@ -43,7 +45,8 @@
         </p>
         <p class="ep-row-actions">
           {% if e.resume_url and e.resume.position_secs > 0 %}
-            <a href="{{ url_for('main.go_episode', episode_id=e.id) }}" target="_blank" rel="noopener">Continue on {{ e.source_name }}</a>
+            <a href="{{ url_for('main.go_episode', episode_id=e.id) }}" target="_blank" rel="noopener"
+               data-direct="{{ e.resume_url }}">Continue on {{ e.source_name }}</a>
           {% elif e.patreon_url %}
             <a href="{{ e.patreon_url }}" target="_blank" rel="noopener">Open on {{ e.source_name }}</a>
           {% endif %}
