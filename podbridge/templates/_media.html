@@ -16,6 +16,7 @@
   <div class="thumb{{ ' is-played' if e.state == 'played' else '' }}">
     {{ placeholder(e.show_title or e.title) }}
     {{ art_img(e.thumb_key, fallback=e.show_art_key) }}
+    {% if e.is_new %}<span class="new-pill">NEW</span>{% endif %}
     {% if e.state == 'unwatched' %}<span class="corner" title="Not started"></span>
     {% elif e.state == 'played' %}<span class="played" title="Played">✓</span>{% endif %}
     {% if e.duration_secs %}<span class="len">{{ e.duration_secs | hms }}</span>{% endif %}
@@ -118,8 +119,9 @@
       {{ placeholder(show.title) }}
       {{ art_img(show.art_key) }}
       {% if show.unwatched %}<span class="count" title="{{ show.unwatched }} not started">{{ show.unwatched }}</span>{% endif %}
+      {% if show.new_count %}<span class="new-pill">NEW</span>{% endif %}
     </div>
     <span class="tile-title">{{ show.title }}</span>
-    <span class="ep-sub">{{ show.episodes | length }} episodes{% if show.in_progress %} · {{ show.in_progress }} in progress{% endif %}</span>
+    <span class="ep-sub">{% if show.new_count %}<span class="new-text">{{ show.new_count }} new</span> · {% endif %}{{ show.episodes | length }} episodes{% if show.in_progress %} · {{ show.in_progress }} in progress{% endif %}</span>
   </a>
 {%- endmacro %}

@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}Hide rules{% endblock %}
+{% block content %}
+<p><a href="{{ url_for('main.sources') }}">← Sources</a></p>
+<h1>Hide rules · {{ source.label }}</h1>
+<p class="muted">Episodes from this source that match a rule are hidden automatically after every refresh and sync.
+  Unhide one by hand and the rules leave it alone. Deleting a rule unhides what it hid.</p>
+
+<section class="card table-card">
+  {% if rules %}
+  <ul class="rule-list">
+    {% for rule in rules %}
+      <li>
+        <span>{{ rule.describe() }}</span>
+        <span class="muted">hiding {{ counts.get(rule.id, 0) }} episode{{ '' if counts.get(rule.id, 0) == 1 else 's' }}</span>
+        <form method="post">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" name="delete" value="{{ rule.id }}" class="chip"
+                  data-confirm="Delete this rule and unhide the episodes it hid?">Delete</button>
+        </form>
+      </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+    <p class="muted">No rules yet.</p>
+  {% endif %}
+</section>
+
+<section class="card">
+  <h2>Add a rule</h2>
+  <form method="post" class="row">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="field">
+      <label for="kind">Hide episodes whose…</label>
+      <select id="kind" name="kind">
+        {% for key, label in kinds.items() %}<option value="{{ key }}">{{ label }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="field grow">
+      <label for="value">Value</label>
+      <input id="value" name="value" type="text" placeholder="e.g. trailer, 3, or 7" required autocomplete="off">
+    </div>
+    <button type="submit">Add rule</button>
+  </form>
+  <p class="muted">Examples: title contains <code>trailer</code> · shorter than <code>3</code> minutes ·
+    no Pocket Casts match after <code>7</code> days.</p>
+</section>
+{% endblock %}

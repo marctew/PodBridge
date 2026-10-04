@@ -7,7 +7,7 @@ import re
 import sqlite3
 import unicodedata
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
 from .matching import route_by_suffix
 from .resume import build_resume_url, last_touched, parse_time, resume_position
@@ -22,7 +22,11 @@ EPISODE_QUERY = (
 )
 
 
-def annotate(row, param: str) -> dict:
+NEW_WINDOW = timedelta(days=14)    # only recent episodes can be "new" (not a freshly imported back catalogue)
+NEW_THIS_WEEK = timedelta(days=7)
+
+
+def annotate(row, param: str, new_since: datetime | None = None) -> dict:
     """Row -> dict with resume position, Continue URL, progress, state and thumbnail key."""
     ep = dict(row)
     youtube = ep.get("source_kind") == "youtube"
@@ -45,6 +49,12 @@ def annotate(row, param: str) -> dict:
     marked = parse_time(ep.get("marked_played_at"))
     if marked and ep["state"] != "played" and (ep["touched"] is None or ep["touched"] <= marked):
         ep["state"], ep["progress_pct"], ep["resume"], ep["resume_url"] = "played", 100.0, None, None
+    # New: unwatched, first seen since your previous visit, and published recently.
+    published = parse_time(ep.get("published_at"))
+    first_seen = parse_time(ep.get("created_at"))
+    ep["is_new"] = bool(
+        new_since and ep["state"] == "unwatched" and first_seen and first_seen > new_since
+        and published and datetime.now(timezone.utc) - published <= NEW_WINDOW)
     ep["thumb_key"] = f"{'yt' if youtube else 'patreon'}:{ep['patreon_post_id']}"
     ep["pc_web_url"], ep["pc_app_url"] = pocketcasts_links(
         ep.get("matched_podcast_uuid"), ep.get("pocketcasts_episode_uuid"),
@@ -95,11 +105,15 @@ class Show:
         return sum(1 for e in self.episodes if e["state"] == "unwatched")
 
     @property
+    def new_count(self) -> int:
+        return sum(1 for e in self.episodes if e.get("is_new"))
+
+    @property
     def latest(self) -> str:
         return max((e["published_at"] or "" for e in self.episodes), default="")
 
 
-def build_shows(conn: sqlite3.Connection, param: str) -> list[Show]:
+def build_shows(conn: sqlite3.Connection, param: str, new_since: datetime | None = None) -> list[Show]:
     """One show per (enabled source, linked podcast); an unlinked source is one show of its own.
     Matched episodes go to their podcast's show. Unmatched ones go to the podcast their
     '| suffix' names, else the source's first podcast."""
@@ -117,7 +131,7 @@ def build_shows(conn: sqlite3.Connection, param: str) -> list[Show]:
 
     rows = conn.execute(EPISODE_QUERY + " WHERE s.enabled = 1 ORDER BY e.published_at DESC").fetchall()
     for row in rows:
-        ep = annotate(row, param)
+        ep = annotate(row, param, new_since)
         podcasts = links.get(ep["source_id"]) or {None: None}
         target = ep["matched_podcast_uuid"] if ep["matched_podcast_uuid"] in podcasts else None
         if target is None:
@@ -160,6 +174,15 @@ def up_next(shows: list[Show], limit: int = 12) -> list[dict]:
         picks.append((last_active, following))
     picks.sort(key=lambda pick: pick[0], reverse=True)
     return [episode for _, episode in picks[:limit]]
+
+
+def new_this_week(shows: list[Show], limit: int = 16) -> list[dict]:
+    """Unwatched episodes published in the last 7 days, newest first."""
+    cutoff = datetime.now(timezone.utc) - NEW_THIS_WEEK
+    eps = [e for e in all_episodes(shows)
+           if e["state"] == "unwatched" and (p := parse_time(e["published_at"])) and p >= cutoff]
+    eps.sort(key=lambda e: _ts(e["published_at"]), reverse=True)
+    return eps[:limit]
 
 
 def search(shows: list[Show], query: str, limit: int = 100) -> tuple[list[Show], list[dict]]:

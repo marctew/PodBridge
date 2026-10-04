@@ -29,6 +29,7 @@
             {% else %}<a href="{{ url_for('main.link_source_form', source_id=s.id) }}">Link podcast</a>{% endif %}
           </td>
           <td class="cell-actions">
+            <a href="{{ url_for('main.source_rules', source_id=s.id) }}" class="rules-link">Hide rules{% if s.rule_count %} ({{ s.rule_count }}){% endif %}</a>
             <form method="post" action="{{ url_for('main.toggle_source', source_id=s.id) }}">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
               <button type="submit" class="link">{{ 'Disable' if s.enabled else 'Enable' }}</button>

@@ -10,7 +10,7 @@ from __future__ import annotations
 import math
 import re
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from .rules import PC_PLAYED, interpret_patreon
@@ -48,12 +48,14 @@ def build_resume_url(post_url: str, position_secs: float, param: str = DEFAULT_T
 
 
 def parse_time(value: str | None) -> datetime | None:
+    """ISO timestamp -> timezone-aware datetime (naive values are taken as UTC)."""
     if not value:
         return None
     try:
-        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+        moment = datetime.fromisoformat(value.replace("Z", "+00:00"))
     except ValueError:
         return None
+    return moment if moment.tzinfo else moment.replace(tzinfo=timezone.utc)
 
 
 def last_touched(patreon_updated_at: str | None, pocketcasts_changed_at: str | None) -> datetime | None:

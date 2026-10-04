@@ -24,6 +24,19 @@
   {% endif %}
 </section>
 
+{% if new_week %}
+<section class="shelf">
+  <div class="shelf-head">
+    <h2>New this week</h2>
+  </div>
+  <div class="shelf-row">
+    {% for e in new_week %}
+      {{ episode_card(e, e.show_title ~ ' · ' ~ (e.published_at | localtime(date_only=True))) }}
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+
 {% if up_next %}
 <section class="shelf">
   <div class="shelf-head">

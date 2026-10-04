@@ -25,6 +25,7 @@ from .discovery import (
     check_patreon_session, discover_all, discover_youtube_all, has_sources, note_youtube_expiry,
     refresh_youtube_episode, upsert_post,
 )
+from .hide_rules import apply_rules
 from .http import TransportError
 from .linking import apply_pocketcasts_state, refresh_all
 from .patreon import PatreonClient, PatreonError, PatreonSessionExpired
@@ -121,6 +122,7 @@ def _run(conn, store, patreon, youtube, pocketcasts, tier, unavailable, art_dir,
         # Episodes whose source failed this run keep their old progress, which the
         # "unchanged since last decision" rule skips, so processing is still safe.
         refresh_all(conn, store, pocketcasts)
+        apply_rules(conn)  # auto-hide before deciding, so hidden junk isn't synced
         _process(conn, run_id, pocketcasts, dry_run, summary)
     except (PocketCastsError, TransportError, SecretError) as exc:
         failures.append(("error", f"Pocket Casts: {type(exc).__name__}: {exc}"))

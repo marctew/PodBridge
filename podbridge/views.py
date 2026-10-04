@@ -5,14 +5,16 @@ from __future__ import annotations
 import io
 import logging
 import tempfile
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from urllib.parse import urlparse
 
 from flask import (
-    Blueprint, abort, current_app, flash, jsonify, redirect, render_template, request, send_file, session,
+    Blueprint, abort, current_app, flash, g, jsonify, redirect, render_template, request, send_file, session,
     url_for,
 )
+
+from .resume import parse_time
 
 from .alerts import current_problems
 
@@ -28,7 +30,7 @@ from .linking import (
 from .patreon import PatreonBlocked, PatreonError, PatreonSessionExpired
 from .pocketcasts import PocketCastsAuthError, PocketCastsBlocked, PocketCastsError
 from .matching import strip_channel_suffix, title_similarity
-from . import artwork, backup, catchup, history, library
+from . import artwork, backup, catchup, hide_rules, history, library
 from .library import EPISODE_QUERY, annotate
 from .resume import TIMESTAMP_PARAM_PATTERN
 from .scheduler import (
@@ -156,8 +158,32 @@ def inject_problems():
     return {"problems": banners}
 
 
+VISIT_GAP = timedelta(minutes=30)
+
+
+def new_since() -> datetime | None:
+    """Start of your previous visit: episodes first seen after it are "new".
+    A visit ends after 30 minutes without opening a page. Only page views (GET) count."""
+    if "new_since" in g:
+        return g.new_since
+    store = get_store()
+    now = datetime.now(timezone.utc)
+    last = parse_time(store.get("last_visit_at"))
+    previous = parse_time(store.get("previous_visit_at"))
+    if request.method == "GET":
+        if last is None:
+            previous = now  # first visit ever: nothing is "new" yet
+            store.set("previous_visit_at", utcnow())
+        elif now - last > VISIT_GAP:
+            previous = last
+            store.set("previous_visit_at", store.get("last_visit_at"))
+        store.set("last_visit_at", utcnow())
+    g.new_since = previous
+    return previous
+
+
 def shows() -> list[library.Show]:
-    return library.build_shows(get_db(), get_store().get("patreon_timestamp_param"))
+    return library.build_shows(get_db(), get_store().get("patreon_timestamp_param"), new_since())
 
 
 def recently_watched(all_shows: list[library.Show], limit: int = 12) -> list[dict]:
@@ -256,6 +282,7 @@ def dashboard():
         scheduler_on=scheduler_running(),
         watching=library.continue_watching(all_shows),
         up_next=library.up_next(all_shows),
+        new_week=library.new_this_week(all_shows),
         recently_watched=recently_watched(all_shows),
         recent=library.recently_added(all_shows),
     )
@@ -296,7 +323,12 @@ def hide_episode(episode_id: int):
     hidden = request.form.get("hidden", "1") == "1"
     db = get_db()
     with db:
-        db.execute("UPDATE episodes SET hidden = ? WHERE id = ?", (int(hidden), episode_id))
+        if hidden:
+            db.execute("UPDATE episodes SET hidden = 1, hidden_by_rule = NULL WHERE id = ?", (episode_id,))
+        else:
+            # Unhiding by hand wins over auto-hide rules from now on.
+            db.execute("UPDATE episodes SET hidden = 0, hidden_by_rule = NULL, hide_override = 1 WHERE id = ?",
+                       (episode_id,))
     flash("Hidden. Find it again under the Hidden filter." if hidden else "Unhidden.", "ok")
     return redirect(safe_next(request.form.get("next") or url_for("main.library_page")))
 
@@ -309,7 +341,7 @@ def hide_unmatched(source_id: int, slug: str):
     ids = [e["id"] for e in show.episodes if e["match_method"] == "none" and not e["match_locked"]]
     db = get_db()
     with db:
-        db.executemany("UPDATE episodes SET hidden = 1 WHERE id = ?", [(i,) for i in ids])
+        db.executemany("UPDATE episodes SET hidden = 1, hidden_by_rule = NULL WHERE id = ?", [(i,) for i in ids])
     flash(f"Hid {len(ids)} unmatched episode{'' if len(ids) == 1 else 's'}. They're under the Hidden filter.", "ok")
     return redirect(url_for("main.show_page", source_id=source_id, slug=slug))
 
@@ -704,6 +736,9 @@ def refresh_episodes():
         except POCKETCASTS_FAILURES as exc:
             flash(pocketcasts_failure(store, exc), "error")
 
+    caught = hide_rules.apply_rules(db)
+    if caught:
+        flash(f"Auto-hide rules hid {caught} new episode{'' if caught == 1 else 's'}.", "ok")
     nxt = request.form.get("next")
     return redirect(safe_next(nxt) if nxt else url_for("main.episodes"))
 
@@ -780,6 +815,7 @@ def sources():
     db = get_db()
     rows = db.execute(
         "SELECT s.*, (SELECT COUNT(*) FROM episodes e WHERE e.source_id = s.id) AS episode_count, "
+        "(SELECT COUNT(*) FROM hide_rules r WHERE r.source_id = s.id) AS rule_count, "
         "(SELECT GROUP_CONCAT(COALESCE(sp.title, 'Linked'), ' + ') FROM source_podcasts sp "
         " WHERE sp.source_id = s.id) AS podcast_names, "
         "(SELECT COUNT(*) FROM episodes e WHERE e.source_id = s.id AND e.match_method != 'none') AS matched_count "
@@ -888,6 +924,32 @@ def widen_source_route(source_id: int):
     flash("Now covers every post in the campaign. Existing matches are kept; press “Refresh” to pull in the rest."
           + (" Disable the other sources for this campaign so posts aren't counted twice." if others else ""), "ok")
     return redirect(url_for("main.sources"))
+
+
+@bp.route("/sources/<int:source_id>/rules", methods=["GET", "POST"])
+def source_rules(source_id: int):
+    db = get_db()
+    source = db.execute("SELECT * FROM sources WHERE id = ?", (source_id,)).fetchone()
+    if source is None:
+        abort(404)
+    if request.method == "POST":
+        if request.form.get("delete"):
+            rule_id = int(request.form["delete"])
+            if rule_id not in {r.id for r in hide_rules.rules_for(db, source_id)}:
+                abort(404)
+            unhidden = hide_rules.delete_rule(db, rule_id)
+            flash(f"Rule deleted; {unhidden} episode{'' if unhidden == 1 else 's'} unhidden.", "ok")
+        else:
+            try:
+                rule, caught = hide_rules.add_rule(db, source_id, request.form.get("kind", ""),
+                                                   request.form.get("value", ""))
+            except hide_rules.RuleError as exc:
+                flash(str(exc), "error")
+            else:
+                flash(f"Rule added ({rule.describe()}): hid {caught} episode{'' if caught == 1 else 's'}.", "ok")
+        return redirect(url_for("main.source_rules", source_id=source_id))
+    return render_template("rules.html", source=source, rules=hide_rules.rules_for(db, source_id),
+                           counts=hide_rules.caught_counts(db), kinds=hide_rules.KINDS)
 
 
 @bp.get("/sources/<int:source_id>/link")
