@@ -11,7 +11,7 @@
 <section class="episode-hero">
   <a class="episode-hero-thumb" href="{{ href }}" target="_blank" rel="noopener"
      {% if e.state == 'in_progress' and e.resume_url %}data-direct="{{ e.resume_url }}"{% endif %}
-     {{ open_with(e, href) }} aria-label="Open {{ e.title }}">{{ episode_thumb(e) }}</a>
+     {{ open_with(e, href, info=False) }} aria-label="Open {{ e.title }}">{{ episode_thumb(e) }}</a>
   <div class="episode-hero-body">
     <h1>{{ e.title }}</h1>
     <p class="muted">

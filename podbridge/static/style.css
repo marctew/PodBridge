@@ -411,6 +411,10 @@ dialog#open-with h2 { display: block; margin: 0 0 .3rem; font-size: 1.1rem; line
   padding: .8rem 1rem; min-height: 48px; font-size: 1rem; }
 a.button.secondary-button { background: transparent; color: var(--text); border: 1px solid var(--border); }
 a.button.secondary-button:hover { border-color: var(--muted); }
+.open-with-info { display: block; text-align: center; padding: .6rem; min-height: 44px; box-sizing: border-box;
+  color: var(--text); text-decoration: none; border-top: 1px solid var(--border); margin-top: .2rem; }
+.open-with-info:hover { color: var(--accent); }
+.open-with-info[hidden] { display: none; }
 #open-with-cancel { display: block; width: 100%; text-align: center; padding: .6rem; min-height: 44px; }
 
 a.pc-link { color: var(--muted); text-decoration: none; white-space: nowrap; }

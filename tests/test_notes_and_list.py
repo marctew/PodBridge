@@ -216,3 +216,11 @@ def test_list_reorder_and_move_routes(app, authed):
     with app.app_context():
         assert my_list.ids(get_db()) == [3, 2, 1]
     assert authed.post("/list/order", data={"csrf_token": token, "order": "x"}).status_code == 400
+
+
+def test_open_with_sheet_links_to_episode_info(app, authed):
+    ep_id, _, _ = library_with_notes(app, authed)
+    home = authed.get("/").get_data(as_text=True)
+    assert f'data-info="/episodes/{ep_id}"' in home and 'id="open-with-info"' in home
+    page = authed.get(f"/episodes/{ep_id}").get_data(as_text=True)
+    assert "data-info=" not in page  # already on it

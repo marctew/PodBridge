@@ -139,3 +139,13 @@ def test_update_episode_sends_all_five_fields_as_ints():
     client.update_episode("ep", "pod", position=381.98, duration=2838.4, status=2)
     assert api.calls[0]["url"].endswith("/sync/update_episode")
     assert api.calls[0]["json"] == {"uuid": "ep", "podcast": "pod", "position": 381, "duration": 2838, "status": 2}
+
+
+def test_set_starred_uses_the_web_players_star_call():
+    client, api, _, _, tokens = make_client([FakeResponse(200, {}), FakeResponse(200, {})])
+    tokens.set("acc", 3600)
+    client.set_starred("ep", "pod", True)
+    client.set_starred("ep", "pod", False)
+    assert api.calls[0]["url"].endswith("/sync/update_episode_star")
+    assert [c["json"] for c in api.calls] == [{"uuid": "ep", "podcast": "pod", "star": True},
+                                              {"uuid": "ep", "podcast": "pod", "star": False}]

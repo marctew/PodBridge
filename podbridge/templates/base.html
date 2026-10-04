@@ -68,6 +68,7 @@
       <a class="button" id="open-with-video" rel="noopener"></a>
       <a class="button secondary-button" id="open-with-pc" rel="noopener"></a>
     </div>
+    <a class="open-with-info" id="open-with-info" hidden>ⓘ Episode info</a>
     <button type="button" class="link" id="open-with-cancel">Cancel</button>
   </dialog>
   {% endif %}
@@ -103,6 +104,7 @@
       var video = document.getElementById("open-with-video");
       var pc = document.getElementById("open-with-pc");
       var position = document.getElementById("open-with-position");
+      var info = document.getElementById("open-with-info");
       var setLink = function (link, desktopUrl, iosUrl) {
         link.href = ios ? (iosUrl || desktopUrl) : desktopUrl;
         if (ios) link.removeAttribute("target"); else link.target = "_blank";
@@ -118,6 +120,8 @@
         video.textContent = "▶ Watch on " + d.videoLabel;
         setLink(pc, d.pcUrl, d.pcDirect);
         pc.textContent = "🎧 Listen in Pocket Casts";
+        info.hidden = !d.info;  // not shown on the episode's own page
+        if (d.info) info.href = d.info;
         sheet.showModal();
       });
       [video, pc].forEach(function (link) {

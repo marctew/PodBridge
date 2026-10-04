@@ -8,6 +8,7 @@ docs/phase0-findings.md):
   - one episode with state: POST /user/episode {uuid, podcast}
   - catalogue (no auth, gzip): GET cache.pocketcasts.com/mobile/podcast/full/{uuid}
   - write: POST /sync/update_episode with all five fields, like the Android app
+  - star: POST /sync/update_episode_star {uuid, podcast, star: bool}, like the web player
 
 The private feed URL in the subscription list is a secret; only its hostname is kept.
 """
@@ -306,10 +307,9 @@ class HttpPocketCastsClient:
         })
 
     def set_starred(self, episode_uuid: str, podcast_uuid: str, starred: bool) -> None:
-        """Star or unstar an episode. The JSON form comes from a community client (the official
-        apps send stars in their protobuf sync), so callers treat failure as non-fatal."""
-        self._post("/sync/update_episode", {"uuid": episode_uuid, "podcast": podcast_uuid,
-                                            "starred": 1 if starred else 0})
+        """Star or unstar an episode: the same call the web player makes (its saveEpisodeStar)."""
+        self._post("/sync/update_episode_star", {"uuid": episode_uuid, "podcast": podcast_uuid,
+                                                 "star": bool(starred)})
 
     def show_notes(self, podcast_uuid: str, episode_uuid: str) -> str | None:
         """An episode's show notes (HTML) from the podcast's notes bundle, or None."""

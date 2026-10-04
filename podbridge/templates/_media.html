@@ -24,7 +24,7 @@
   </div>
 {%- endmacro %}
 
-{% macro open_with(e, href) -%}
+{% macro open_with(e, href, info=True) -%}
   {#- Attributes for the "Open with…" sheet: only when the episode has a Pocket Casts match,
       otherwise the link just goes to the video. -#}
   {%- if e.pc_web_url -%}
@@ -32,6 +32,7 @@
     data-video-url="{{ href }}" data-video-direct="{{ e.resume_url or e.patreon_url or href }}"
     data-pc-url="{{ e.pc_web_url }}" data-pc-direct="{{ e.pc_app_url }}"
     data-position="{{ (e.resume.position_secs | hms) if e.resume and e.resume.position_secs > 0 else '' }}"
+    {% if info %}data-info="{{ url_for('main.episode_page', episode_id=e.id) }}"{% endif %}
   {%- endif -%}
 {%- endmacro %}
 

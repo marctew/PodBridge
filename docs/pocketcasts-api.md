@@ -61,3 +61,9 @@ The official apps now send many sync calls as **protobuf** (`application/octet-s
 - **Mark played:** `status=3`, `position=duration`, `duration=duration`.
 - **Unconfirmed:** whether partial bodies work (the community client sends them). PodBridge should always send all five fields.
 - The only bulk endpoint is protobuf (`/user/sync/update`). There's no JSON equivalent.
+
+## Star: `POST /sync/update_episode_star` (JSON, web player)
+
+- Body: `{uuid, podcast, star}`, where `star` is a boolean. Taken from the web player's `saveEpisodeStar` (static.pocketcasts.com/webplayer/assets/api-*.js, October 2026).
+- Sending `starred` to `/sync/update_episode` (a community client's form) does nothing.
+- Starred state reads back as `starred` on `/user/podcast/episodes` items.
