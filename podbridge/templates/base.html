@@ -97,6 +97,47 @@
         if (b && !window.confirm(b.dataset.confirm)) ev.preventDefault();
       });
 
+      // ☆ on Home cards: toggle My List in place (the form still works without this).
+      var toast = null, toastTimer = null;
+      var say = function (text, level) {
+        if (!toast) { toast = document.createElement("div"); toast.className = "toast"; toast.setAttribute("role", "status"); document.body.appendChild(toast); }
+        toast.textContent = text;
+        toast.className = "toast show" + (level === "warn" ? " warn" : "");
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(function () { toast.className = "toast"; }, 3000);
+      };
+      document.addEventListener("submit", function (ev) {
+        var form = ev.target.closest("form.card-star");
+        if (!form || !window.fetch) return;
+        ev.preventDefault();
+        var button = form.querySelector("button");
+        var body = new URLSearchParams(new FormData(form));
+        body.set("in_list", button.value);
+        button.disabled = true;
+        fetch(form.action, { method: "POST", body: body, headers: { "X-Requested-With": "fetch" } })
+          .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+          .then(function (data) {
+            // The same episode can be on several rows: update every copy.
+            document.querySelectorAll('.card-star button[data-episode="' + button.dataset.episode + '"]').forEach(function (b) {
+              var label = data.in_list ? "Remove from My List" : "Save to My List";
+              b.value = data.in_list ? "0" : "1";
+              b.textContent = data.in_list ? "★" : "☆";
+              b.classList.toggle("on", data.in_list);
+              b.setAttribute("aria-pressed", data.in_list ? "true" : "false");
+              b.title = label;
+              b.setAttribute("aria-label", label);
+            });
+            say(data.message, data.level);
+          })
+          .catch(function () {  // fall back to a normal post (which reloads the page)
+            var input = document.createElement("input");
+            input.type = "hidden"; input.name = "in_list"; input.value = button.value;
+            form.appendChild(input);
+            form.submit();
+          })
+          .then(function () { button.disabled = false; });
+      });
+
       // "Open with…": thumbnails of matched episodes ask whether to watch the video or listen in
       // Pocket Casts. Modifier-clicks (open in new tab etc.) skip the sheet.
       var sheet = document.getElementById("open-with");

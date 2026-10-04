@@ -224,3 +224,20 @@ def test_open_with_sheet_links_to_episode_info(app, authed):
     assert f'data-info="/episodes/{ep_id}"' in home and 'id="open-with-info"' in home
     page = authed.get(f"/episodes/{ep_id}").get_data(as_text=True)
     assert "data-info=" not in page  # already on it
+
+
+def test_star_from_home_cards_toggles_in_place(app, authed):
+    ep_id, _, pc = library_with_notes(app, authed)
+    home = authed.get("/")
+    html = home.get_data(as_text=True)
+    assert f'action="/episodes/{ep_id}/list"' in html and f'data-episode="{ep_id}"' in html
+    response = authed.post(f"/episodes/{ep_id}/list", data={"csrf_token": csrf_from(home), "in_list": "1"},
+                           headers={"X-Requested-With": "fetch"})
+    assert response.get_json() == {"in_list": True, "level": "ok",
+                                   "message": "Added to My List and starred in Pocket Casts."}
+    pc.star_error = PocketCastsError("nope")
+    response = authed.post(f"/episodes/{ep_id}/list", data={"csrf_token": csrf_from(home), "in_list": "0"},
+                           headers={"X-Requested-With": "fetch"})
+    assert response.get_json()["level"] == "warn" and not response.get_json()["in_list"]
+    with app.app_context():
+        assert my_list.ids(get_db()) == []

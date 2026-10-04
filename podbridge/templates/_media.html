@@ -38,6 +38,7 @@
 
 {% macro episode_card(e, subtitle) -%}
   {%- set href = url_for('main.go_episode', episode_id=e.id) if e.state == 'in_progress' else (e.patreon_url or url_for('main.episodes')) -%}
+  <div class="ep-card-wrap">
   <a class="ep-card" href="{{ href }}" target="_blank" rel="noopener" title="{{ e.title }}"
      {% if e.state == 'in_progress' and e.resume_url %}data-direct="{{ e.resume_url }}"{% endif %}
      {{ open_with(e, href) }}>
@@ -45,6 +46,19 @@
     <span class="ep-title">{{ e.title }}</span>
     <span class="ep-sub">{{ subtitle }}</span>
   </a>
+  {#- The star sits over the thumbnail but outside the link (a form can't go inside one).
+      Without JavaScript it posts and comes back to Home; with it, it toggles in place. -#}
+  <div class="card-star-layer">
+    <form method="post" class="card-star" action="{{ url_for('main.toggle_list', episode_id=e.id) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="next" value="{{ url_for('main.dashboard') }}">
+      <button type="submit" name="in_list" value="{{ '0' if e.in_list else '1' }}" data-episode="{{ e.id }}"
+              class="{{ 'on' if e.in_list else '' }}" aria-pressed="{{ 'true' if e.in_list else 'false' }}"
+              title="{{ 'Remove from My List' if e.in_list else 'Save to My List' }}"
+              aria-label="{{ 'Remove from My List' if e.in_list else 'Save to My List' }}">{{ '★' if e.in_list else '☆' }}</button>
+    </form>
+  </div>
+  </div>
 {%- endmacro %}
 
 {% set method_labels = {'auto_title': 'Title', 'auto_duration': 'Date + length', 'auto_date': 'Fuzzy', 'manual': 'Manual'} %}

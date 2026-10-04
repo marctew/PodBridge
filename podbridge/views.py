@@ -371,21 +371,23 @@ def toggle_list(episode_id: int):
     adding = request.form.get("in_list", "1") == "1"
     with db:
         (my_list.add if adding else my_list.remove)(db, episode_id)
-    message = "Added to My List" if adding else "Removed from My List"
+    message, level = ("Added to My List" if adding else "Removed from My List") + ".", "ok"
     store = get_store()
     if row["pocketcasts_episode_uuid"] and row["matched_podcast_uuid"] and pocketcasts_configured(store):
+        verb = "star" if adding else "unstar"
         try:
             pocketcasts_client(store).set_starred(row["pocketcasts_episode_uuid"], row["matched_podcast_uuid"], adding)
         except POCKETCASTS_FAILURES as exc:
-            log.warning("Couldn't %s in Pocket Casts: %s", "star" if adding else "unstar", type(exc).__name__)
-            flash(f"{message}, but couldn't {'star' if adding else 'unstar'} it in Pocket Casts.", "warn")
+            log.warning("Couldn't %s in Pocket Casts: %s", verb, type(exc).__name__)
+            message, level = f"{message[:-1]}, but couldn't {verb} it in Pocket Casts.", "warn"
         else:
             # The stored star is left as last read: the next refresh sees the change (if Pocket Casts
             # took it) and mirrors it, which My List already matches. If Pocket Casts silently
             # ignored the write, nothing changes there, so nothing is undone here.
-            flash(f"{message} and {'starred' if adding else 'unstarred'} in Pocket Casts.", "ok")
-    else:
-        flash(message + ".", "ok")
+            message = f"{message[:-1]} and {verb}red in Pocket Casts."
+    if request.headers.get("X-Requested-With") == "fetch":  # star buttons on Home cards
+        return jsonify(in_list=adding, message=message, level=level)
+    flash(message, level)
     return redirect(safe_next(request.form.get("next") or url_for("main.list_page")))
 
 
