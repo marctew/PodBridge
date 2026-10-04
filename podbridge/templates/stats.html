@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+{% block title %}Stats{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>Stats</h1>
+  <a class="muted" href="{{ url_for('main.history_page') }}">History →</a>
+</div>
+
+{% if not s.has_data %}
+  <p class="muted">No listening recorded yet. Stats build up from your history as you watch and listen.</p>
+{% else %}
+<div class="viz-root">
+
+  <div class="stat-tiles">
+    <div class="stat-tile"><span class="stat-label">This week</span><span class="stat-value">{{ s.this_week | hm }}</span></div>
+    <div class="stat-tile"><span class="stat-label">Last 30 days</span><span class="stat-value">{{ s.last_30 | hm }}</span></div>
+    <div class="stat-tile"><span class="stat-label">Finished, last 30 days</span>
+      <span class="stat-value">{{ s.finished_30 }}</span>
+      <span class="stat-sub">{{ s.finished_all }} all time{% if s.completion is not none %} · {{ '%d' | format(s.completion * 100) }}% of started{% endif %}</span></div>
+    <div class="stat-tile"><span class="stat-label">Streak</span>
+      <span class="stat-value">{{ s.current_streak }} day{{ '' if s.current_streak == 1 else 's' }}</span>
+      <span class="stat-sub">longest {{ s.longest_streak }}</span></div>
+  </div>
+
+  <section class="card chart-card">
+    <div class="chart-head">
+      <h2>Time per week</h2>
+      <ul class="legend" aria-label="Legend">
+        {% for side in sides %}<li><span class="key key-{{ side }}"></span>{{ side_labels[side] }}</li>{% endfor %}
+      </ul>
+    </div>
+    <div class="col-chart" role="img"
+         aria-label="Hours per week for the last {{ s.weekly | length }} weeks, stacked by app. The table below has the values.">
+      <div class="y-axis" aria-hidden="true">
+        {% for tick in s.axis_ticks %}<span style="bottom: {{ loop.index0 * 25 }}%">{{ (tick / 60) | round | int if s.axis_max < 3 * 3600 else ('%g' | format(tick / 3600)) }}{{ 'm' if s.axis_max < 3 * 3600 else 'h' }}</span>{% endfor %}
+      </div>
+      <div class="plot">
+        {% for tick in s.axis_ticks %}<span class="gridline" style="bottom: {{ loop.index0 * 25 }}%"></span>{% endfor %}
+        {% for w in s.weekly %}
+          <div class="col{{ ' current' if w.current else '' }}" tabindex="0"
+               data-tip="Week of {{ w.label }}: {{ w.total | hm }}{% for side in sides %}{% if w.by_side[side] %} · {{ side_labels[side] }} {{ w.by_side[side] | hm }}{% endif %}{% endfor %}">
+            <div class="col-stack" style="height: {{ '%.2f' | format(w.total / s.axis_max * 100) }}%">
+              {% for side in sides | reverse %}{% if w.by_side[side] %}
+                <span class="seg seg-{{ side }}" style="flex-grow: {{ '%.1f' | format(w.by_side[side]) }}"></span>
+              {% endif %}{% endfor %}
+            </div>
+            <span class="col-label{{ ' alt' if loop.index is odd else '' }}">{{ w.label }}</span>
+          </div>
+        {% endfor %}
+      </div>
+    </div>
+    <div class="chart-tip" role="status" aria-live="polite"></div>
+    <details class="table-view">
+      <summary>Show as a table</summary>
+      <table>
+        <thead><tr><th>Week of</th>{% for side in sides %}<th class="num">{{ side_labels[side] }}</th>{% endfor %}<th class="num">Total</th></tr></thead>
+        <tbody>
+          {% for w in s.weekly | reverse %}
+          <tr><td>{{ w.label }}</td>{% for side in sides %}<td class="num">{{ w.by_side[side] | hm }}</td>{% endfor %}<td class="num">{{ w.total | hm }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </details>
+  </section>
+
+  <div class="grid stats-grid">
+    <section class="card">
+      <h2>By app, last 30 days</h2>
+      {% if s.split_30_total %}
+      <ul class="split-list">
+        {% for side in sides %}
+          {% set secs = s.split_30[side] %}
+          <li>
+            <span class="split-name"><span class="key key-{{ side }}"></span>{{ side_labels[side] }}</span>
+            <span class="split-bar"><span class="bar-fill fill-{{ side }}" style="width: {{ '%.1f' | format(secs / s.split_30_total * 100) }}%"></span></span>
+            <span class="split-value">{{ secs | hm }} · {{ '%d' | format(secs / s.split_30_total * 100) }}%</span>
+          </li>
+        {% endfor %}
+      </ul>
+      {% else %}<p class="muted">Nothing in the last 30 days.</p>{% endif %}
+    </section>
+
+    <section class="card">
+      <h2>By show, last 30 days</h2>
+      {% if s.shows %}
+      <ul class="split-list">
+        {% for row in s.shows %}
+          <li>
+            <span class="split-name" title="{{ row.title }}">{{ row.title }}</span>
+            <span class="split-bar"><span class="bar-fill fill-single"
+                  style="width: {{ '%.1f' | format((row.secs_30 / s.show_max * 100) if s.show_max else 0) }}%"></span></span>
+            <span class="split-value">{{ row.secs_30 | hm }}<span class="muted"> · {{ row.finished }} finished</span></span>
+          </li>
+        {% endfor %}
+      </ul>
+      {% else %}<p class="muted">Nothing yet.</p>{% endif %}
+    </section>
+  </div>
+
+  <p class="muted">Counted from how far each episode's furthest position moved, whichever app moved it; rewatching
+    doesn't add time, and PodBridge's own syncing never counts.{% if s.first_day %} Records start {{ s.first_day.strftime('%d %b %Y') }}.{% endif %}</p>
+</div>
+
+<script>
+  // Hover/focus tooltip for the weekly columns.
+  (function () {
+    var tip = document.querySelector(".chart-tip");
+    var plot = document.querySelector(".col-chart");
+    if (!tip || !plot) return;
+    function show(col) { tip.textContent = col.dataset.tip; tip.classList.add("on"); }
+    function hide() { tip.classList.remove("on"); }
+    plot.querySelectorAll(".col").forEach(function (col) {
+      col.addEventListener("mouseenter", function () { show(col); });
+      col.addEventListener("focus", function () { show(col); });
+      col.addEventListener("mouseleave", hide);
+      col.addEventListener("blur", hide);
+    });
+  })();
+</script>
+{% endif %}
+{% endblock %}

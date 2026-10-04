@@ -55,6 +55,13 @@ def create_app(config: Config | None = None) -> Flask:
             return value
         return moment.astimezone(zone).strftime("%d %b %Y" if date_only else "%d %b %Y %H:%M")
 
+    @app.template_filter("hm")
+    def hm(secs: float | None) -> str:
+        """Durations for stats: '3h 20m', '45m', '0m'."""
+        minutes = int(round((secs or 0) / 60))
+        hours, minutes = divmod(minutes, 60)
+        return f"{hours}h {minutes:02}m" if hours else f"{minutes}m"
+
     @app.template_filter("hms")
     def hms(value: float | None) -> str:
         if value is None:

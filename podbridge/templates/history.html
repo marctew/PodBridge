@@ -1,7 +1,10 @@
 {% extends "base.html" %}
 {% block title %}History{% endblock %}
 {% block content %}
-<h1>History</h1>
+<div class="page-head">
+  <h1>History</h1>
+  <a class="muted" href="{{ url_for('main.stats_page') }}">Stats →</a>
+</div>
 <p class="muted">What you watched or listened to, and how far you got. Recorded whenever PodBridge notices progress move.</p>
 {% if days %}
   {% for day, entries in days.items() %}

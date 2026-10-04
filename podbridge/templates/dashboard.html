@@ -54,7 +54,8 @@
 <section class="shelf">
   <div class="shelf-head">
     <h2>Recently watched</h2>
-    <a class="muted" href="{{ url_for('main.history_page') }}">History →</a>
+    <span class="shelf-links"><a class="muted" href="{{ url_for('main.history_page') }}">History</a>
+      · <a class="muted" href="{{ url_for('main.stats_page') }}">Stats →</a></span>
   </div>
   <div class="shelf-row">
     {% for e in recently_watched %}

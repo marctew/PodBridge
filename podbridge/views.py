@@ -30,7 +30,7 @@ from .linking import (
 from .patreon import PatreonBlocked, PatreonError, PatreonSessionExpired
 from .pocketcasts import PocketCastsAuthError, PocketCastsBlocked, PocketCastsError
 from .matching import strip_channel_suffix, title_similarity
-from . import artwork, backup, catchup, hide_rules, history, library
+from . import artwork, backup, catchup, hide_rules, history, library, stats
 from .library import EPISODE_QUERY, annotate
 from .resume import TIMESTAMP_PARAM_PATTERN
 from .scheduler import (
@@ -425,6 +425,13 @@ def restore_backup():
     flash(f"Restored: {info.sources} sources and {info.episodes} episodes"
           + (". Credentials were left out, so re-enter them below." if drop and info.has_secrets else "."), "ok")
     return redirect(url_for("main.settings"))
+
+
+@bp.get("/stats")
+def stats_page():
+    titles = {e["id"]: s.title for s in shows() for e in (*s.episodes, *s.hidden_episodes)}
+    summary = stats.summarize(get_db(), current_app.config["PODBRIDGE"].tz, titles)
+    return render_template("stats.html", s=summary, sides=stats.SIDES, side_labels=stats.SIDE_LABELS)
 
 
 @bp.get("/history")
