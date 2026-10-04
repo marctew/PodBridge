@@ -73,6 +73,7 @@ class PatreonClient(Protocol):
     def list_posts(self, campaign_id: str, collection_id: str | None) -> list[Post]: ...
     def list_collections(self, campaign_id: str) -> list[Collection]: ...
     def get_post(self, post_id: str) -> Post | None: ...
+    def get_post_text(self, post_id: str) -> str | None: ...
 
 
 # --- parsing (pure functions, tested against fixtures) ---
@@ -241,6 +242,15 @@ class HttpPatreonClient:
         if status != 200:
             raise PatreonError(f"Post returned HTTP {status}")
         return parse_post(_dig(body, "data"))
+
+    def get_post_text(self, post_id: str) -> str | None:
+        """The post's body (HTML) for its episode page."""
+        status, body = self._get(f"/api/posts/{post_id}", {"fields[post]": "content", **JSONAPI})
+        if status == 401:
+            raise PatreonSessionExpired("Patreon session rejected while reading a post")
+        if status != 200:
+            return None
+        return _str(_dig(body, "data", "attributes", "content"))
 
     def list_collections(self, campaign_id: str) -> list[Collection]:
         params = {"filter[campaign_id]": campaign_id, "fields[collection]": "title,num_posts", **JSONAPI}

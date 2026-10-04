@@ -30,7 +30,7 @@ from .linking import (
 from .patreon import PatreonBlocked, PatreonError, PatreonSessionExpired
 from .pocketcasts import PocketCastsAuthError, PocketCastsBlocked, PocketCastsError
 from .matching import strip_channel_suffix, title_similarity
-from . import artwork, backup, catchup, hide_rules, history, library, stats
+from . import artwork, backup, catchup, hide_rules, history, library, my_list, notes, stats
 from .library import EPISODE_QUERY, annotate
 from .resume import TIMESTAMP_PARAM_PATTERN
 from .scheduler import (
@@ -41,7 +41,7 @@ from .sync import SyncBusy, set_played, sync_one_episode
 from .sync import _lock as sync_lock
 from .services import (
     NotConfigured, art_dir, patreon_client, pocketcasts_client, pocketcasts_configured, pocketcasts_tokens,
-    youtube_client,
+    youtube_client, youtube_public_client,
 )
 from .discovery import (
     check_youtube_session, discover_youtube_all, has_sources, missing_youtube_dates, note_youtube_expiry,
@@ -281,6 +281,7 @@ def dashboard():
         next_run=next_run_at(),
         scheduler_on=scheduler_running(),
         watching=library.continue_watching(all_shows),
+        my_list=library.in_order(all_shows, my_list.ids(db))[:16],
         up_next=library.up_next(all_shows),
         new_week=library.new_this_week(all_shows),
         recently_watched=recently_watched(all_shows),
@@ -316,6 +317,106 @@ def show_page(source_id: int, slug: str):
     batch = catchup.latest_for_scope(get_db(), f"{source_id}/{slug}")
     return render_template("show.html", show=show, episodes=episodes, current=current, filters=list(filters),
                            up_next=up_next[0] if up_next else None, unmatched=unmatched, batch=batch)
+
+
+@bp.get("/episodes/<int:episode_id>")
+def episode_page(episode_id: int):
+    episode = library.find_episode(shows(), episode_id)
+    if episode is None:
+        abort(404)
+    db = get_db()
+    cached = notes.cached(db, episode_id) or _fetch_notes(episode)
+    param = get_store().get("patreon_timestamp_param")
+    source_notes = notes.render(cached["source_text"], episode, param)
+    pc_notes = (notes.render(cached["pc_text"], episode, param)
+                if cached["pc_text"] and cached["pc_text"] != cached["source_text"] else None)
+    return render_template("episode.html", e=episode, source_notes=source_notes, pc_notes=pc_notes,
+                           notes_fetched_at=cached["fetched_at"])
+
+
+def _fetch_notes(episode: dict):
+    """Notes from the episode's source (Patreon post text or YouTube description) and from
+    Pocket Casts, cached. A side that isn't configured or fails is left empty."""
+    store = get_store()
+    source = pc = None
+    try:
+        source = youtube_public_client() if episode["source_kind"] == "youtube" else patreon_client(store)
+    except (NotConfigured, SecretError):
+        pass
+    if pocketcasts_configured(store):
+        try:
+            pc = pocketcasts_client(store)
+        except (NotConfigured, SecretError):
+            pass
+    return notes.fetch(get_db(), episode, source, pc)
+
+
+@bp.post("/episodes/<int:episode_id>/notes")
+def refresh_notes(episode_id: int):
+    episode = library.find_episode(shows(), episode_id)
+    if episode is None:
+        abort(404)
+    _fetch_notes(episode)
+    flash("Notes refreshed.", "ok")
+    return redirect(url_for("main.episode_page", episode_id=episode_id))
+
+
+@bp.post("/episodes/<int:episode_id>/list")
+def toggle_list(episode_id: int):
+    """Add to or remove from My List, and star or unstar it in Pocket Casts (best-effort)."""
+    db = get_db()
+    row = db.execute(EPISODE_QUERY + " WHERE e.id = ?", (episode_id,)).fetchone()
+    if row is None:
+        abort(404)
+    adding = request.form.get("in_list", "1") == "1"
+    with db:
+        (my_list.add if adding else my_list.remove)(db, episode_id)
+    message = "Added to My List" if adding else "Removed from My List"
+    store = get_store()
+    if row["pocketcasts_episode_uuid"] and row["matched_podcast_uuid"] and pocketcasts_configured(store):
+        try:
+            pocketcasts_client(store).set_starred(row["pocketcasts_episode_uuid"], row["matched_podcast_uuid"], adding)
+        except POCKETCASTS_FAILURES as exc:
+            log.warning("Couldn't %s in Pocket Casts: %s", "star" if adding else "unstar", type(exc).__name__)
+            flash(f"{message}, but couldn't {'star' if adding else 'unstar'} it in Pocket Casts.", "warn")
+        else:
+            # The stored star is left as last read: the next refresh sees the change (if Pocket Casts
+            # took it) and mirrors it, which My List already matches. If Pocket Casts silently
+            # ignored the write, nothing changes there, so nothing is undone here.
+            flash(f"{message} and {'starred' if adding else 'unstarred'} in Pocket Casts.", "ok")
+    else:
+        flash(message + ".", "ok")
+    return redirect(safe_next(request.form.get("next") or url_for("main.list_page")))
+
+
+@bp.get("/list")
+def list_page():
+    episodes = library.in_order(shows(), my_list.ids(get_db()))
+    return render_template("list.html", episodes=episodes)
+
+
+@bp.post("/list/order")
+def reorder_list():
+    """New order from drag and drop: order=3,1,2 (episode IDs, top first)."""
+    try:
+        order = [int(i) for i in request.form.get("order", "").split(",") if i.strip()]
+    except ValueError:
+        abort(400)
+    db = get_db()
+    with db:
+        my_list.reorder(db, order)
+    if request.headers.get("X-Requested-With") == "fetch":
+        return jsonify(ok=True)
+    return redirect(url_for("main.list_page"))
+
+
+@bp.post("/list/<int:episode_id>/move")
+def move_in_list(episode_id: int):
+    offset = -1 if request.form.get("direction") == "up" else 1
+    db = get_db()
+    with db:
+        my_list.move(db, episode_id, offset)
+    return redirect(url_for("main.list_page", _anchor=f"episode-{episode_id}"))
 
 
 @bp.post("/episodes/<int:episode_id>/hide")

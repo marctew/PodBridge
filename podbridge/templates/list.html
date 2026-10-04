@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% from "_media.html" import episode_thumb, open_with, star_chip with context %}
+{% block title %}My List{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>My List</h1>
+  <a class="muted" href="{{ url_for('main.library_page') }}">Library →</a>
+</div>
+<p class="muted">Episodes saved for later. Drag to reorder{% if episodes | length > 1 %} (or use ↑ ↓){% endif %}. Starring an episode in Pocket Casts adds it here too.</p>
+{% if episodes %}
+<ol class="my-list" id="my-list" data-order-url="{{ url_for('main.reorder_list') }}" data-csrf="{{ csrf_token() }}">
+  {% for e in episodes %}
+    {%- set href = url_for('main.go_episode', episode_id=e.id) if e.state == 'in_progress' else (e.patreon_url or '#') -%}
+    <li class="my-list-item" id="episode-{{ e.id }}" data-id="{{ e.id }}" draggable="true">
+      <span class="drag-handle" aria-hidden="true" title="Drag to reorder">⋮⋮</span>
+      <a class="my-list-thumb" href="{{ href }}" target="_blank" rel="noopener" draggable="false"
+         {% if e.state == 'in_progress' and e.resume_url %}data-direct="{{ e.resume_url }}"{% endif %}
+         {{ open_with(e, href) }} aria-label="Open {{ e.title }}">{{ episode_thumb(e) }}</a>
+      <div class="my-list-body">
+        <h3><a class="ep-title-link" href="{{ url_for('main.episode_page', episode_id=e.id) }}" draggable="false">{{ e.title }}</a></h3>
+        <p class="muted">{{ e.show_title }} · {{ e.published_at | localtime(date_only=True) }}{% if e.duration_secs %} · {{ e.duration_secs | hms }}{% endif %}
+          {% if e.state == 'in_progress' %} · <span class="warn-text">{{ e.resume.position_secs | hms }}</span>{% elif e.state == 'played' %} · Played{% endif %}</p>
+        <form method="post" class="ep-row-tools">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="next" value="{{ url_for('main.list_page') }}">
+          {% if not loop.first %}
+          <button type="submit" class="chip" formaction="{{ url_for('main.move_in_list', episode_id=e.id) }}"
+                  name="direction" value="up" title="Move up" aria-label="Move up">↑</button>
+          {% endif %}
+          {% if not loop.last %}
+          <button type="submit" class="chip" formaction="{{ url_for('main.move_in_list', episode_id=e.id) }}"
+                  name="direction" value="down" title="Move down" aria-label="Move down">↓</button>
+          {% endif %}
+          <button type="submit" class="chip" formaction="{{ url_for('main.toggle_list', episode_id=e.id) }}"
+                  name="in_list" value="0">Remove</button>
+        </form>
+      </div>
+    </li>
+  {% endfor %}
+</ol>
+<script>
+  // Drag to reorder (desktop). The new order is saved straight away; ↑/↓ work without this.
+  (function () {
+    var list = document.getElementById("my-list");
+    var dragging = null;
+    list.addEventListener("dragstart", function (ev) {
+      dragging = ev.target.closest(".my-list-item");
+      if (!dragging) return;
+      dragging.classList.add("dragging");
+      ev.dataTransfer.effectAllowed = "move";
+      ev.dataTransfer.setData("text/plain", dragging.dataset.id);
+    });
+    list.addEventListener("dragover", function (ev) {
+      if (!dragging) return;
+      ev.preventDefault();
+      var over = ev.target.closest(".my-list-item");
+      if (!over || over === dragging) return;
+      var box = over.getBoundingClientRect();
+      list.insertBefore(dragging, ev.clientY > box.top + box.height / 2 ? over.nextSibling : over);
+    });
+    list.addEventListener("drop", function (ev) { ev.preventDefault(); });
+    list.addEventListener("dragend", function () {
+      if (!dragging) return;
+      dragging.classList.remove("dragging");
+      dragging = null;
+      var order = Array.prototype.map.call(list.querySelectorAll(".my-list-item"), function (li) { return li.dataset.id; });
+      var body = new URLSearchParams({ order: order.join(","), csrf_token: list.dataset.csrf });
+      fetch(list.dataset.orderUrl, { method: "POST", body: body, headers: { "X-Requested-With": "fetch" } })
+        .then(function (r) { if (!r.ok) throw new Error(r.status); })
+        .catch(function () { window.location.reload(); });
+    });
+  })();
+</script>
+{% else %}
+  <p class="muted">Nothing saved yet. Use <strong>☆ My List</strong> on any episode, or star it in Pocket Casts.</p>
+{% endif %}
+{% endblock %}

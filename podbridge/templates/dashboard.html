@@ -24,6 +24,20 @@
   {% endif %}
 </section>
 
+{% if my_list %}
+<section class="shelf">
+  <div class="shelf-head">
+    <h2>My List</h2>
+    <a class="muted" href="{{ url_for('main.list_page') }}">Edit list →</a>
+  </div>
+  <div class="shelf-row">
+    {% for e in my_list %}
+      {{ episode_card(e, e.show_title ~ ' · ' ~ ('Played' if e.state == 'played' else ((e.resume.position_secs | hms) ~ ' of ' ~ (e.duration_secs | hms)) if e.state == 'in_progress' else (e.published_at | localtime(date_only=True)))) }}
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+
 {% if new_week %}
 <section class="shelf">
   <div class="shelf-head">

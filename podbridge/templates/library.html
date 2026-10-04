@@ -4,6 +4,7 @@
 {% block content %}
 <div class="page-head">
   <h1>Library</h1>
+  <a class="muted push-right" href="{{ url_for('main.list_page') }}">★ My List</a>
   <form method="post" action="{{ url_for('main.refresh_episodes') }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="next" value="{{ url_for('main.library_page') }}">

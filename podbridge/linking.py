@@ -11,7 +11,7 @@ from .db import utcnow
 from .matching import (
     LOOSE_DATE_TOLERANCE, PatreonSide, PocketSide, match_episodes, match_episodes_loose, parse_time,
 )
-from . import history
+from . import history, my_list
 from .pocketcasts import STATUS_PLAYED, STATUS_UNPLAYED, EpisodeState, PocketCastsClient
 from .settings_store import SettingsStore
 
@@ -47,14 +47,32 @@ def store_catalogue(conn: sqlite3.Connection, podcast_uuid: str, catalogue, stat
         state = states.get(ep.uuid)
         conn.execute(
             "INSERT INTO pocketcasts_episodes (uuid, podcast_uuid, title, published_at, duration_secs, "
-            "playing_status, played_up_to, fetched_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?) "
+            "playing_status, played_up_to, starred, fetched_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) "
             "ON CONFLICT (uuid) DO UPDATE SET podcast_uuid = excluded.podcast_uuid, title = excluded.title, "
             "published_at = excluded.published_at, duration_secs = excluded.duration_secs, "
             "playing_status = excluded.playing_status, played_up_to = excluded.played_up_to, "
-            "fetched_at = excluded.fetched_at",
+            "starred = excluded.starred, fetched_at = excluded.fetched_at",
             (ep.uuid, podcast_uuid, ep.title, ep.published_at, ep.duration_secs,
-             state.status if state else STATUS_UNPLAYED, state.played_up_to if state else 0.0, now),
+             state.status if state else STATUS_UNPLAYED, state.played_up_to if state else 0.0,
+             int(bool(state and state.starred)), now),
         )
+
+
+def mirror_stars(conn: sqlite3.Connection, source_id: int) -> None:
+    """Follow Pocket Casts stars into My List: a star added there adds the episode, a star
+    removed there removes it. Only changes are mirrored, so removing an episode from My List in
+    PodBridge (when the star write failed) isn't undone by an unchanged star."""
+    rows = conn.execute(
+        "SELECT e.id, pe.uuid, pe.starred, pe.starred_applied FROM episodes e "
+        "JOIN pocketcasts_episodes pe ON pe.uuid = e.pocketcasts_episode_uuid "
+        "WHERE e.source_id = ? AND pe.starred IS NOT NULL "
+        "AND (pe.starred_applied IS NULL OR pe.starred_applied != pe.starred)", (source_id,)).fetchall()
+    for row in rows:
+        if row["starred"]:
+            my_list.add(conn, row["id"])
+        elif row["starred_applied"]:
+            my_list.remove(conn, row["id"])
+        conn.execute("UPDATE pocketcasts_episodes SET starred_applied = starred WHERE uuid = ?", (row["uuid"],))
 
 
 def reset_sync_marker(conn: sqlite3.Connection, episode_id: int) -> None:
@@ -170,6 +188,7 @@ def refresh_source(conn: sqlite3.Connection, client: PocketCastsClient, source: 
             store_catalogue(conn, podcast_uuid, catalogue, states)
         result.newly_matched = auto_match_source(conn, source)
         sync_matched_states(conn, source["id"])
+        mirror_stars(conn, source["id"])
     for row in conn.execute(
         "SELECT match_method, COUNT(*) AS n FROM episodes WHERE source_id = ? GROUP BY match_method",
         (source["id"],),
@@ -271,6 +290,7 @@ def rematch_youtube_offline(conn: sqlite3.Connection) -> int:
         with conn:
             total += auto_match_source(conn, source)
             sync_matched_states(conn, source["id"])
+            mirror_stars(conn, source["id"])
     return total
 
 

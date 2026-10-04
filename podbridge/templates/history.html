@@ -17,7 +17,7 @@
             <span class="history-side side-{{ h.side }}">
               {{ {'patreon': 'Watched on Patreon', 'youtube': 'Watched on YouTube', 'pocketcasts': 'Listened in Pocket Casts'}[h.side] }}
             </span>
-            <span class="history-title">{{ h.title }}</span>
+            <a class="history-title" href="{{ url_for('main.episode_page', episode_id=h.episode_id) }}">{{ h.title }}</a>
             <span class="muted">{% if h.played %}finished{% elif h.position_secs %}to {{ h.position_secs | hms }}{% else %}started{% endif %}</span>
           </li>
         {% endfor %}

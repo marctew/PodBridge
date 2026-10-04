@@ -70,6 +70,7 @@ class EpisodeState:
     status: int
     played_up_to: float
     duration_secs: float | None
+    starred: bool = False
 
 
 class PocketCastsClient(Protocol):
@@ -80,6 +81,8 @@ class PocketCastsClient(Protocol):
     def get_episode_state(self, episode_uuid: str, podcast_uuid: str) -> EpisodeState | None: ...
     def update_episode(self, episode_uuid: str, podcast_uuid: str, position: int, duration: int,
                        status: int) -> None: ...
+    def set_starred(self, episode_uuid: str, podcast_uuid: str, starred: bool) -> None: ...
+    def show_notes(self, podcast_uuid: str, episode_uuid: str) -> str | None: ...
 
 
 # --- parsing ---
@@ -136,7 +139,22 @@ def parse_state(item: Any) -> EpisodeState | None:
         status=status if status in (STATUS_UNPLAYED, STATUS_IN_PROGRESS, STATUS_PLAYED) else STATUS_UNPLAYED,
         played_up_to=_num(item.get("playedUpTo")) or 0.0,
         duration_secs=_num(item.get("duration")),
+        starred=item.get("starred") is True,
     )
+
+
+def find_show_notes(body: Any, episode_uuid: str) -> str | None:
+    """The show_notes string for one episode, wherever it sits in the notes bundle."""
+    stack = [body]
+    while stack:
+        node = stack.pop()
+        if isinstance(node, dict):
+            if node.get("uuid") == episode_uuid and isinstance(node.get("show_notes"), str):
+                return node["show_notes"]
+            stack.extend(node.values())
+        elif isinstance(node, list):
+            stack.extend(node)
+    return None
 
 
 def parse_states(body: Any) -> dict[str, EpisodeState]:
@@ -286,3 +304,23 @@ class HttpPocketCastsClient:
             "uuid": episode_uuid, "podcast": podcast_uuid,
             "position": int(position), "duration": int(duration), "status": int(status),
         })
+
+    def set_starred(self, episode_uuid: str, podcast_uuid: str, starred: bool) -> None:
+        """Star or unstar an episode. The JSON form comes from a community client (the official
+        apps send stars in their protobuf sync), so callers treat failure as non-fatal."""
+        self._post("/sync/update_episode", {"uuid": episode_uuid, "podcast": podcast_uuid,
+                                            "starred": 1 if starred else 0})
+
+    def show_notes(self, podcast_uuid: str, episode_uuid: str) -> str | None:
+        """An episode's show notes (HTML) from the podcast's notes bundle, or None."""
+        for cache in (*self.caches[1:], *self.caches[:1]):  # podcast-api host first, then cache host
+            try:
+                response = cache.request("GET", f"/mobile/show_notes/full/{podcast_uuid}")
+            except TransportError:
+                continue
+            if response.status_code != 200:
+                continue
+            notes = find_show_notes(json_or_none(response), episode_uuid)
+            if notes is not None:
+                return notes
+        return None

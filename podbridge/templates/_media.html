@@ -48,6 +48,22 @@
 
 {% set method_labels = {'auto_title': 'Title', 'auto_duration': 'Date + length', 'auto_date': 'Fuzzy', 'manual': 'Manual'} %}
 
+{% macro star_chip(e) -%}
+  {#- ☆/★ My List toggle; goes inside a form that carries csrf_token and next. -#}
+  <button type="submit" class="chip{{ ' chip-on' if e.in_list else '' }}" formaction="{{ url_for('main.toggle_list', episode_id=e.id) }}"
+          name="in_list" value="{{ '0' if e.in_list else '1' }}" aria-pressed="{{ 'true' if e.in_list else 'false' }}"
+          title="{{ 'Remove from My List' if e.in_list else 'Save to My List' }}{{ ' (and star in Pocket Casts)' if e.pc_web_url else '' }}">
+    {{- '★ In My List' if e.in_list else '☆ My List' -}}</button>
+{%- endmacro %}
+
+{% macro star_button(e, back) -%}
+  <form method="post" class="inline-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="next" value="{{ back }}">
+    {{ star_chip(e) }}
+  </form>
+{%- endmacro %}
+
 {% macro episode_row(e, with_show=False) -%}
   {#- One episode in a list (show pages, search results). Import "with context": uses request. -#}
   {%- set href = url_for('main.go_episode', episode_id=e.id) if e.state == 'in_progress' else (e.patreon_url or '#') -%}
@@ -57,7 +73,7 @@
        {% if e.state == 'in_progress' and e.resume_url %}data-direct="{{ e.resume_url }}"{% endif %}
        {{ open_with(e, href) }} target="_blank" rel="noopener" aria-label="Open {{ e.title }}">{{ episode_thumb(e) }}</a>
     <div class="ep-row-body">
-      <h3>{{ e.title }}</h3>
+      <h3><a class="ep-title-link" href="{{ url_for('main.episode_page', episode_id=e.id) }}">{{ e.title }}</a></h3>
       <p class="muted">
         {% if with_show %}{{ e.show_title }} · {% endif %}
         {{ e.published_at | localtime(date_only=True) }}{% if e.duration_secs %} · {{ e.duration_secs | hms }}{% endif %}
@@ -81,6 +97,7 @@
       <form method="post" class="ep-row-tools">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="hidden" name="next" value="{{ back }}#episode-{{ e.id }}">
+        {{ star_chip(e) }}
         {% if e.hidden %}
           <button type="submit" class="chip" formaction="{{ url_for('main.hide_episode', episode_id=e.id) }}"
                   name="hidden" value="0">Unhide</button>

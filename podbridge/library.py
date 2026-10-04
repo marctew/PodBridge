@@ -16,9 +16,11 @@ EPISODE_QUERY = (
     "SELECT e.*, s.pocketcasts_podcast_uuid, s.enabled AS source_enabled, s.kind AS source_kind, "
     "s.label AS source_label, pe.podcast_uuid AS matched_podcast_uuid, "
     "p.patreon_position_secs, p.patreon_is_watched, p.patreon_watch_state, p.patreon_updated_at, "
-    "p.pocketcasts_position_secs, p.pocketcasts_status, p.pocketcasts_changed_at, p.last_synced_at "
+    "p.pocketcasts_position_secs, p.pocketcasts_status, p.pocketcasts_changed_at, p.last_synced_at, "
+    "(ml.episode_id IS NOT NULL) AS in_list "
     "FROM episodes e JOIN sources s ON s.id = e.source_id LEFT JOIN progress p ON p.episode_id = e.id "
-    "LEFT JOIN pocketcasts_episodes pe ON pe.uuid = e.pocketcasts_episode_uuid"
+    "LEFT JOIN pocketcasts_episodes pe ON pe.uuid = e.pocketcasts_episode_uuid "
+    "LEFT JOIN my_list ml ON ml.episode_id = e.id"
 )
 
 
@@ -155,6 +157,17 @@ def continue_watching(shows: list[Show], limit: int | None = 12) -> list[dict]:
     eps = [e for e in all_episodes(shows) if e["state"] == "in_progress" and e["resume_url"]]
     eps.sort(key=lambda e: e["touched"].timestamp() if e["touched"] else 0, reverse=True)
     return eps[:limit] if limit else eps
+
+
+def find_episode(shows: list[Show], episode_id: int) -> dict | None:
+    """One episode (hidden ones included), with its show's details filled in."""
+    return next((e for s in shows for e in (*s.episodes, *s.hidden_episodes) if e["id"] == episode_id), None)
+
+
+def in_order(shows: list[Show], episode_ids: list[int]) -> list[dict]:
+    """Episodes for the given IDs, in that order (hidden ones included; unknown IDs skipped)."""
+    by_id = {e["id"]: e for s in shows for e in (*s.episodes, *s.hidden_episodes)}
+    return [by_id[i] for i in episode_ids if i in by_id]
 
 
 def up_next(shows: list[Show], limit: int = 12) -> list[dict]:

@@ -113,7 +113,7 @@
         ev.preventDefault();
         var d = a.dataset;
         document.getElementById("open-with-title").textContent = d.title;
-        position.textContent = d.position ? "Resume at " + d.position : "From the start";
+        position.textContent = d.positionLabel || (d.position ? "Resume at " + d.position : "From the start");
         setLink(video, d.videoUrl, d.videoDirect);
         video.textContent = "▶ Watch on " + d.videoLabel;
         setLink(pc, d.pcUrl, d.pcDirect);

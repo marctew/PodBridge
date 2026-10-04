@@ -118,15 +118,18 @@ Your normal email and password. PodBridge keeps a refresh token, so it doesn't l
 
 ## Day to day
 
-- **Home:** Continue watching, Up next, Recently watched and Recently added, plus connection and sync status.
+- **Home:** Continue watching, My List, Up next, Recently watched and Recently added, plus connection and sync status.
 - **Library:** shows and search. On a show page:
   - **Filters:** All, In progress, Unwatched, Played and Hidden.
   - **Per episode:**
     - **↻ Sync now:** fresh progress from both sides, then the normal rules.
     - **✓ Mark played** or **Mark unplayed:** writes to Pocket Casts immediately.
     - **⏪ This & older played:** catch-up for backlogs, with **↶ Undo**.
+    - **☆ My List:** save it for later (and star it in Pocket Casts).
     - **Hide.**
   - **Hide N unmatched:** clears out posts that will never be in the podcast.
+- **Episode pages:** tap an episode's title. Shows the Patreon post text or YouTube description, plus Pocket Casts show notes when they differ, fetched on first view and cached (↻ Refresh notes to fetch again). Timestamps like 12:30 open the episode at that point, with the usual "Open with…" choice.
+- **My List** (from Home or Library): episodes saved for later. Drag to reorder, or ↑/↓ on a phone. Stars sync both ways with Pocket Casts: starring there adds an episode here, unstarring removes it. The star write uses an unofficial API field, so if it fails PodBridge keeps the episode in My List and says so.
 - **Matching:** every episode with its match. Click the Match column to change one.
 - **Activity:** every sync run, and what it did to each episode.
 - **History:** day by day, what you watched or listened to, and how far.

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import Any
 
 from podbridge.patreon import Collection, Post
@@ -43,6 +44,7 @@ class FakePatreonClient:
         self.collections = collections or []
         self.error = error
         self.list_calls: list[tuple[str, str]] = []
+        self.post_texts: dict[str, str] = {}
 
     def check_session(self) -> bool:
         if self.error:
@@ -60,6 +62,12 @@ class FakePatreonClient:
         self.list_calls.append(("post", post_id))
         return next((p for p in self.posts if p.post_id == post_id), None)
 
+    def get_post_text(self, post_id: str) -> str | None:
+        self.list_calls.append(("text", post_id))
+        if self.error:
+            raise self.error
+        return self.post_texts.get(post_id)
+
 
 class FakePocketCastsClient:
     def __init__(self, podcasts: list[Podcast] | None = None,
@@ -72,6 +80,9 @@ class FakePocketCastsClient:
         self.error = error
         self.truncated = truncated
         self.updates: list[tuple] = []
+        self.stars: list[tuple] = []
+        self.star_error: Exception | None = None
+        self.notes: dict[str, str] = {}
 
     def _maybe_fail(self):
         if self.error:
@@ -100,3 +111,15 @@ class FakePocketCastsClient:
     def update_episode(self, episode_uuid, podcast_uuid, position, duration, status) -> None:
         self._maybe_fail()
         self.updates.append((episode_uuid, podcast_uuid, position, duration, status))
+
+    def set_starred(self, episode_uuid, podcast_uuid, starred) -> None:
+        self._maybe_fail()
+        if self.star_error:
+            raise self.star_error
+        self.stars.append((episode_uuid, podcast_uuid, starred))
+        if episode_uuid in self.states:
+            self.states[episode_uuid] = replace(self.states[episode_uuid], starred=bool(starred))
+
+    def show_notes(self, podcast_uuid, episode_uuid) -> str | None:
+        self._maybe_fail()
+        return self.notes.get(episode_uuid)

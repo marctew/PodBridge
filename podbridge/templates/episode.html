@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% from "_media.html" import episode_thumb, open_with, star_button with context %}
+{% block title %}{{ e.title }}{% endblock %}
+{% block content %}
+{%- set href = url_for('main.go_episode', episode_id=e.id) if e.state == 'in_progress' else (e.patreon_url or '#') -%}
+{%- set back = request.full_path.rstrip('?') -%}
+<p class="crumbs muted">
+  <a href="{{ url_for('main.library_page') }}">Library</a> ›
+  {% if e.show_scope %}<a href="{{ url_for('main.show_page', source_id=e.source_id, slug=e.show_scope.split('/', 1)[1]) }}">{{ e.show_title }}</a>{% else %}{{ e.show_title }}{% endif %}
+</p>
+<section class="episode-hero">
+  <a class="episode-hero-thumb" href="{{ href }}" target="_blank" rel="noopener"
+     {% if e.state == 'in_progress' and e.resume_url %}data-direct="{{ e.resume_url }}"{% endif %}
+     {{ open_with(e, href) }} aria-label="Open {{ e.title }}">{{ episode_thumb(e) }}</a>
+  <div class="episode-hero-body">
+    <h1>{{ e.title }}</h1>
+    <p class="muted">
+      {{ e.show_title }} · {{ e.published_at | localtime(date_only=True) }}{% if e.duration_secs %} · {{ e.duration_secs | hms }}{% endif %}
+      {% if e.state == 'in_progress' %} · <span class="warn-text">{{ e.resume.position_secs | hms }} ({{ 'Pocket Casts' if e.resume.source == 'pocketcasts' else e.source_name }})</span>
+      {% elif e.state == 'played' %} · Played{% endif %}
+      {% if e.hidden %} · Hidden{% endif %}
+    </p>
+    <p class="episode-actions">
+      {% if e.resume_url and e.resume.position_secs > 0 %}
+        <a class="button" href="{{ url_for('main.go_episode', episode_id=e.id) }}" target="_blank" rel="noopener"
+           data-direct="{{ e.resume_url }}">▶ Continue on {{ e.source_name }}</a>
+      {% elif e.patreon_url %}
+        <a class="button" href="{{ e.patreon_url }}" target="_blank" rel="noopener">▶ Watch on {{ e.source_name }}</a>
+      {% endif %}
+      {% if e.pc_web_url %}
+        <a class="button secondary-button" href="{{ e.pc_web_url }}" target="_blank" rel="noopener" data-direct="{{ e.pc_app_url }}">🎧 Pocket Casts</a>
+      {% endif %}
+    </p>
+    <div class="ep-row-tools">{{ star_button(e, back) }}</div>
+  </div>
+</section>
+
+<section class="notes">
+  <div class="shelf-head">
+    <h2>{{ 'Description' if e.source_kind == 'youtube' else 'Post' }}</h2>
+    <form method="post" action="{{ url_for('main.refresh_notes', episode_id=e.id) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button type="submit" class="chip" title="Fetched {{ notes_fetched_at | localtime }}">↻ Refresh notes</button>
+    </form>
+  </div>
+  {% if source_notes %}
+    <div class="notes-text">{{ source_notes }}</div>
+  {% else %}
+    <p class="muted">No {{ 'description' if e.source_kind == 'youtube' else 'post text' }} available.</p>
+  {% endif %}
+  {% if pc_notes %}
+    <h2 class="section-title">Pocket Casts show notes</h2>
+    <div class="notes-text">{{ pc_notes }}</div>
+  {% endif %}
+  {% if source_notes or pc_notes %}
+    <p class="muted small">Tap a timestamp to open the episode at that point.</p>
+  {% endif %}
+</section>
+{% endblock %}

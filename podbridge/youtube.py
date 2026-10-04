@@ -413,6 +413,15 @@ class PublicYouTubeClient:
         html = self._page(f"/watch?v={video_id}")
         return parse_watch_page(extract_json(html, "ytInitialPlayerResponse"), video_id)
 
+    def video_description(self, video_id: str) -> str | None:
+        """The video's description (plain text), for its episode page."""
+        if not VIDEO_ID.match(video_id):
+            return None
+        player = extract_json(self._page(f"/watch?v={video_id}"), "ytInitialPlayerResponse")
+        details = player.get("videoDetails") if isinstance(player, dict) else None
+        text = details.get("shortDescription") if isinstance(details, dict) else None
+        return text if isinstance(text, str) and text.strip() else None
+
     def channel_videos(self, channel_id: str) -> list[PlaylistItem]:
         """The channel's most recent uploads (first page of the uploads playlist, about 100)."""
         if not CHANNEL_ID.match(channel_id):
