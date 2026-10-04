@@ -72,6 +72,23 @@ def start_date_backfill() -> bool:
     return True
 
 
+def _in_app_context(app: Flask, func, args) -> None:
+    with app.app_context():
+        func(*args)
+
+
+def run_soon(job_id: str, func, *args) -> bool:
+    """Run func(*args) in the background with an app context. Without a scheduler (local dev,
+    tests) it runs inline instead. Returns True if it was backgrounded."""
+    scheduler = current_app.extensions.get("scheduler")
+    if scheduler is None:
+        func(*args)
+        return False
+    scheduler.add_job(_in_app_context, args=[current_app._get_current_object(), func, args], id=job_id,
+                      replace_existing=True, max_instances=1, next_run_time=datetime.now(timezone.utc))
+    return True
+
+
 def backfill_status() -> dict:
     return current_app.extensions.get("youtube_backfill", {})
 

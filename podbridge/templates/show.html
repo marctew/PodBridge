@@ -21,18 +21,48 @@
   </div>
 </section>
 
-<nav class="tabs" aria-label="Filter">
-  {% for f in filters %}
-    <a href="{{ url_for('main.show_page', source_id=show.source_id, slug=show.slug, filter=f) }}"
-       {% if f == current %}aria-current="page"{% endif %}>{{ f.replace('_', ' ') | capitalize }}</a>
-  {% endfor %}
-</nav>
+{% if batch %}
+<div class="catchup card">
+  {% if batch.status in ('pending', 'running') %}
+    <span>Marking {{ batch.label }} as played… <strong>{{ batch.processed }} / {{ batch.total }}</strong>.
+      <a href="{{ request.full_path.rstrip('?') }}">Refresh</a> to see progress.</span>
+  {% elif batch.status == 'undoing' %}
+    <span>Undoing catch-up… {{ batch.processed }} left. <a href="{{ request.full_path.rstrip('?') }}">Refresh</a></span>
+  {% else %}
+    <span>{% if batch.status == 'failed' %}<span class="warn-text">Catch-up stopped: {{ batch.error }}.</span>
+      {% else %}Marked {{ batch.label }} as played ({{ batch.processed }} episode{{ '' if batch.processed == 1 else 's' }}).{% endif %}</span>
+    {% if batch.processed %}
+    <form method="post" action="{{ url_for('main.undo_catch_up', batch_id=batch.id) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button type="submit" class="chip">↶ Undo</button>
+    </form>
+    {% endif %}
+  {% endif %}
+</div>
+{% endif %}
+
+<div class="tabs-row">
+  <nav class="tabs" aria-label="Filter">
+    {% for f in filters %}
+      <a href="{{ url_for('main.show_page', source_id=show.source_id, slug=show.slug, filter=f) }}"
+         {% if f == current %}aria-current="page"{% endif %}>{{ f.replace('_', ' ') | capitalize }}{% if f == 'hidden' and show.hidden_episodes %} ({{ show.hidden_episodes | length }}){% endif %}</a>
+    {% endfor %}
+  </nav>
+  {% if unmatched and current != 'hidden' %}
+  <form method="post" action="{{ url_for('main.hide_unmatched', source_id=show.source_id, slug=show.slug) }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button type="submit" class="chip" data-confirm="Hide the {{ unmatched }} episode{{ '' if unmatched == 1 else 's' }} in this show with no Pocket Casts match?">
+      Hide {{ unmatched }} unmatched</button>
+  </form>
+  {% endif %}
+</div>
 
 {% if episodes %}
 <ol class="ep-list">
   {% for e in episodes %}{{ episode_row(e) }}{% endfor %}
 </ol>
 {% else %}
-  <p class="muted">No episodes {{ 'match this filter' if current != 'all' else 'yet' }}.</p>
+  <p class="muted">{{ 'Nothing hidden in this show.' if current == 'hidden' else
+                     ('No episodes match this filter.' if current != 'all' else 'No episodes yet.') }}</p>
 {% endif %}
 {% endblock %}

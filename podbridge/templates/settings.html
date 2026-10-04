@@ -92,4 +92,24 @@
   <p class="muted">Credentials are encrypted at rest and never shown again.</p>
   <button type="submit">Save</button>
 </form>
+
+<section class="card backup-card" id="backup">
+  <h2>Backup &amp; restore</h2>
+  <p class="muted">A backup holds your sources, matches, progress, history and settings. Credentials stay encrypted
+    with your <code>ENCRYPTION_KEY</code>, so keep a copy of that key (from <code>.env</code>) somewhere safe too.
+    Artwork isn't included; it's downloaded again as needed.</p>
+  <p><a class="button secondary-button" href="{{ url_for('main.download_backup') }}">⬇ Download backup</a></p>
+  <form method="post" action="{{ url_for('main.restore_backup') }}" enctype="multipart/form-data" class="restore-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="field">
+      <label for="backup-file">Restore from a backup</label>
+      <input id="backup-file" name="backup" type="file" accept=".db,application/vnd.sqlite3,application/x-sqlite3">
+    </div>
+    <label class="inline"><input type="checkbox" name="without_credentials" value="1">
+      Restore without credentials (if the backup was made with a different <code>ENCRYPTION_KEY</code>)</label>
+    <p><button type="submit" class="secondary"
+               data-confirm="Replace everything in PodBridge with this backup? Download a backup of the current state first if you might want it.">
+      Restore</button></p>
+  </form>
+</section>
 {% endblock %}

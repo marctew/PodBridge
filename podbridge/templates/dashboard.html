@@ -37,6 +37,20 @@
 </section>
 {% endif %}
 
+{% if recently_watched %}
+<section class="shelf">
+  <div class="shelf-head">
+    <h2>Recently watched</h2>
+    <a class="muted" href="{{ url_for('main.history_page') }}">History →</a>
+  </div>
+  <div class="shelf-row">
+    {% for e in recently_watched %}
+      {{ episode_card(e, e.show_title ~ ' · ' ~ ('Played' if e.state == 'played' else ((e.resume.position_secs | hms) ~ ' of ' ~ (e.duration_secs | hms)) if e.resume else '')) }}
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+
 {% if recent %}
 <section class="shelf">
   <div class="shelf-head">

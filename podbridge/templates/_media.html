@@ -77,25 +77,37 @@
           {% if e.match_method != 'none' %}Pocket Casts: {{ method_labels[e.match_method] }} match
           {% elif e.match_locked %}No Pocket Casts match{% else %}<span class="warn-text">Unmatched</span>{% endif %}</a>
       </p>
-      {% if e.pc_web_url %}
       <form method="post" class="ep-row-tools">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="hidden" name="next" value="{{ back }}#episode-{{ e.id }}">
-        <button type="submit" class="chip" formaction="{{ url_for('main.sync_episode', episode_id=e.id) }}"
-                title="Read the latest progress for this episode and update Pocket Casts now">↻ Sync now</button>
-        {% if e.pocketcasts_status == 3 %}
-          <button type="submit" class="chip" formaction="{{ url_for('main.set_played_route', episode_id=e.id) }}"
-                  name="played" value="0" title="Mark unplayed in Pocket Casts, back to the start">Mark unplayed</button>
+        {% if e.hidden %}
+          <button type="submit" class="chip" formaction="{{ url_for('main.hide_episode', episode_id=e.id) }}"
+                  name="hidden" value="0">Unhide</button>
         {% else %}
-          <button type="submit" class="chip" formaction="{{ url_for('main.set_played_route', episode_id=e.id) }}"
-                  name="played" value="1" title="Mark played in Pocket Casts">✓ Mark played</button>
-          {% if e.pocketcasts_status == 2 %}
-          <button type="submit" class="chip" formaction="{{ url_for('main.set_played_route', episode_id=e.id) }}"
-                  name="played" value="0" title="Mark unplayed in Pocket Casts, back to the start">Mark unplayed</button>
+          {% if e.pc_web_url %}
+            <button type="submit" class="chip" formaction="{{ url_for('main.sync_episode', episode_id=e.id) }}"
+                    title="Read the latest progress for this episode and update Pocket Casts now">↻ Sync now</button>
+            {% if e.pocketcasts_status == 3 %}
+              <button type="submit" class="chip" formaction="{{ url_for('main.set_played_route', episode_id=e.id) }}"
+                      name="played" value="0" title="Mark unplayed in Pocket Casts, back to the start">Mark unplayed</button>
+            {% else %}
+              <button type="submit" class="chip" formaction="{{ url_for('main.set_played_route', episode_id=e.id) }}"
+                      name="played" value="1" title="Mark played in Pocket Casts">✓ Mark played</button>
+              {% if e.pocketcasts_status == 2 %}
+              <button type="submit" class="chip" formaction="{{ url_for('main.set_played_route', episode_id=e.id) }}"
+                      name="played" value="0" title="Mark unplayed in Pocket Casts, back to the start">Mark unplayed</button>
+              {% endif %}
+            {% endif %}
           {% endif %}
+          {% if e.state != 'played' and not with_show %}
+            <button type="submit" class="chip" formaction="{{ url_for('main.catch_up', episode_id=e.id) }}"
+                    data-confirm="Mark “{{ e.title }}” and every older episode in this show as played?"
+                    title="Catch up: mark this and every older episode in the show as played">Played up to here</button>
+          {% endif %}
+          <button type="submit" class="chip" formaction="{{ url_for('main.hide_episode', episode_id=e.id) }}"
+                  name="hidden" value="1" title="Hide from the library, rows and Matching">Hide</button>
         {% endif %}
       </form>
-      {% endif %}
     </div>
   </li>
 {%- endmacro %}

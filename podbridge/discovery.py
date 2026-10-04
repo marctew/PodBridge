@@ -12,7 +12,8 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from . import artwork
+from . import artwork, history
+from .rules import interpret_patreon
 
 from .db import utcnow
 from .patreon import PatreonClient, PatreonSessionExpired, Post, Progress
@@ -64,6 +65,12 @@ def upsert_post(conn: sqlite3.Connection, source_id: int, post: Post, with_progr
     if not with_progress:
         return existing is None
     p = post.progress
+    previous = conn.execute("SELECT patreon_updated_at FROM progress WHERE episode_id = ?", (episode_id,)).fetchone()
+    if p.updated_at and (previous is None or previous[0] != p.updated_at):
+        # "Finished" by the same rule as syncing: Patreon's own watched flag fires early.
+        finished = interpret_patreon(p.position_secs, p.is_watched, post.duration_secs).played
+        history.log(conn, episode_id, "youtube" if post.post_type == "youtube" else "patreon",
+                    p.position_secs, finished, at=p.updated_at)
     conn.execute(
         "INSERT INTO progress (episode_id, patreon_position_secs, patreon_is_watched, patreon_watch_state, "
         "patreon_updated_at) VALUES (?, ?, ?, ?, ?) "

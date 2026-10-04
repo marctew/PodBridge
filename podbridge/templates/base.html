@@ -90,6 +90,12 @@
           .forEach(function (a) { a.removeAttribute("target"); });
       }
 
+      // Buttons with data-confirm ask first (e.g. catch-up, which can touch a whole back catalogue).
+      document.addEventListener("click", function (ev) {
+        var b = ev.target.closest("button[data-confirm]");
+        if (b && !window.confirm(b.dataset.confirm)) ev.preventDefault();
+      });
+
       // "Open with…": thumbnails of matched episodes ask whether to watch the video or listen in
       // Pocket Casts. Modifier-clicks (open in new tab etc.) skip the sheet.
       var sheet = document.getElementById("open-with");

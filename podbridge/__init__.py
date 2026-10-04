@@ -29,6 +29,7 @@ def create_app(config: Config | None = None) -> Flask:
         SESSION_COOKIE_SAMESITE="Lax",
         SESSION_COOKIE_SECURE=config.session_cookie_secure,
         PERMANENT_SESSION_LIFETIME=timedelta(days=30),
+        MAX_CONTENT_LENGTH=200 * 1024 * 1024,  # backup restores
     )
     # Behind a single reverse proxy.
     app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)

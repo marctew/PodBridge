@@ -167,7 +167,8 @@ def _process(conn, run_id: int, pocketcasts: PocketCastsClient, dry_run: bool, s
         "FROM episodes e JOIN sources s ON s.id = e.source_id "
         "JOIN progress p ON p.episode_id = e.id "
         "LEFT JOIN pocketcasts_episodes pe ON pe.uuid = e.pocketcasts_episode_uuid "
-        f"WHERE s.enabled = 1 AND p.patreon_updated_at IS NOT NULL{only_one} ORDER BY e.published_at DESC",
+        f"WHERE s.enabled = 1 AND p.patreon_updated_at IS NOT NULL{only_one}"
+        f"{'' if episode_id is not None else ' AND e.hidden = 0'} ORDER BY e.published_at DESC",
         (episode_id,) if episode_id is not None else (),
     ).fetchall()
     prefix = "Dry run: would " if dry_run else ""

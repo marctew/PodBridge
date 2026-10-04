@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 
 from .matching import route_by_suffix
-from .resume import build_resume_url, last_touched, resume_position
+from .resume import build_resume_url, last_touched, parse_time, resume_position
 
 EPISODE_QUERY = (
     "SELECT e.*, s.pocketcasts_podcast_uuid, s.enabled AS source_enabled, s.kind AS source_kind, "
@@ -40,6 +40,11 @@ def annotate(row, param: str) -> dict:
                               if ep["duration_secs"] else 0.0)
     else:
         ep["state"], ep["progress_pct"] = "unwatched", 0.0
+    # Catch-up marks episodes with no Pocket Casts match played inside PodBridge. Watching it
+    # again afterwards (newer progress) takes precedence.
+    marked = parse_time(ep.get("marked_played_at"))
+    if marked and ep["state"] != "played" and (ep["touched"] is None or ep["touched"] <= marked):
+        ep["state"], ep["progress_pct"], ep["resume"], ep["resume_url"] = "played", 100.0, None, None
     ep["thumb_key"] = f"{'yt' if youtube else 'patreon'}:{ep['patreon_post_id']}"
     ep["pc_web_url"], ep["pc_app_url"] = pocketcasts_links(
         ep.get("matched_podcast_uuid"), ep.get("pocketcasts_episode_uuid"),
@@ -71,6 +76,7 @@ class Show:
     source_label: str
     kind: str
     episodes: list[dict] = field(default_factory=list)
+    hidden_episodes: list[dict] = field(default_factory=list)
 
     @property
     def slug(self) -> str:
@@ -122,7 +128,8 @@ def build_shows(conn: sqlite3.Connection, param: str) -> list[Show]:
         if show is not None:
             ep["show_title"] = show.title
             ep["show_art_key"] = show.art_key
-            show.episodes.append(ep)
+            ep["show_scope"] = f"{show.source_id}/{show.slug}"
+            (show.hidden_episodes if ep["hidden"] else show.episodes).append(ep)
     return sorted(shows.values(), key=lambda sh: sh.latest, reverse=True)
 
 

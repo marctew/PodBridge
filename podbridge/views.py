@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+import io
 import logging
+import tempfile
 from datetime import datetime
+from pathlib import Path
 from urllib.parse import urlparse
 
 from flask import (
-    Blueprint, abort, flash, jsonify, redirect, render_template, request, send_file, session, url_for,
+    Blueprint, abort, current_app, flash, jsonify, redirect, render_template, request, send_file, session,
+    url_for,
 )
 
 from .alerts import current_problems
@@ -24,14 +28,15 @@ from .linking import (
 from .patreon import PatreonBlocked, PatreonError, PatreonSessionExpired
 from .pocketcasts import PocketCastsAuthError, PocketCastsBlocked, PocketCastsError
 from .matching import strip_channel_suffix, title_similarity
-from . import artwork, library
+from . import artwork, backup, catchup, history, library
 from .library import EPISODE_QUERY, annotate
 from .resume import TIMESTAMP_PARAM_PATTERN
 from .scheduler import (
-    backfill_status, next_run_at, restart_countdown, run_date_backfill, run_sync_now, scheduler_running,
+    backfill_status, next_run_at, restart_countdown, run_date_backfill, run_soon, run_sync_now, scheduler_running,
     start_date_backfill,
 )
 from .sync import SyncBusy, set_played, sync_one_episode
+from .sync import _lock as sync_lock
 from .services import (
     NotConfigured, art_dir, patreon_client, pocketcasts_client, pocketcasts_configured, pocketcasts_tokens,
     youtube_client,
@@ -155,6 +160,11 @@ def shows() -> list[library.Show]:
     return library.build_shows(get_db(), get_store().get("patreon_timestamp_param"))
 
 
+def recently_watched(all_shows: list[library.Show], limit: int = 12) -> list[dict]:
+    by_id = {e["id"]: e for e in library.all_episodes(all_shows)}
+    return [by_id[i] for i in history.recently_watched_ids(get_db(), limit) if i in by_id]
+
+
 def continue_watching(limit: int | None = 12) -> list[dict]:
     return library.continue_watching(shows(), limit)
 
@@ -230,7 +240,7 @@ def dashboard():
         "(SELECT COUNT(*) FROM episodes) AS episodes, "
         "(SELECT COUNT(*) FROM episodes WHERE match_method != 'none') AS matched, "
         "(SELECT COUNT(*) FROM episodes e JOIN sources s ON s.id = e.source_id "
-        " WHERE e.match_method = 'none' AND e.match_locked = 0 "
+        " WHERE e.match_method = 'none' AND e.match_locked = 0 AND e.hidden = 0 "
         " AND s.pocketcasts_podcast_uuid IS NOT NULL) AS unmatched"
     ).fetchone()
     return render_template(
@@ -246,6 +256,7 @@ def dashboard():
         scheduler_on=scheduler_running(),
         watching=library.continue_watching(all_shows),
         up_next=library.up_next(all_shows),
+        recently_watched=recently_watched(all_shows),
         recent=library.recently_added(all_shows),
     )
 
@@ -267,11 +278,127 @@ def show_page(source_id: int, slug: str):
         abort(404)
     current = request.args.get("filter", "all")
     filters = {"all": lambda e: True, "in_progress": lambda e: e["state"] == "in_progress",
-               "unwatched": lambda e: e["state"] == "unwatched", "played": lambda e: e["state"] == "played"}
-    episodes = [e for e in show.episodes if filters.get(current, filters["all"])(e)]
+               "unwatched": lambda e: e["state"] == "unwatched", "played": lambda e: e["state"] == "played",
+               "hidden": None}
+    if current == "hidden":
+        episodes = show.hidden_episodes
+    else:
+        episodes = [e for e in show.episodes if (filters.get(current) or filters["all"])(e)]
     up_next = library.continue_watching([show], limit=1)
+    unmatched = sum(1 for e in show.episodes if e["match_method"] == "none" and not e["match_locked"])
+    batch = catchup.latest_for_scope(get_db(), f"{source_id}/{slug}")
     return render_template("show.html", show=show, episodes=episodes, current=current, filters=list(filters),
-                           up_next=up_next[0] if up_next else None)
+                           up_next=up_next[0] if up_next else None, unmatched=unmatched, batch=batch)
+
+
+@bp.post("/episodes/<int:episode_id>/hide")
+def hide_episode(episode_id: int):
+    hidden = request.form.get("hidden", "1") == "1"
+    db = get_db()
+    with db:
+        db.execute("UPDATE episodes SET hidden = ? WHERE id = ?", (int(hidden), episode_id))
+    flash("Hidden. Find it again under the Hidden filter." if hidden else "Unhidden.", "ok")
+    return redirect(safe_next(request.form.get("next") or url_for("main.library_page")))
+
+
+@bp.post("/library/<int:source_id>/<slug>/hide-unmatched")
+def hide_unmatched(source_id: int, slug: str):
+    show = next((s for s in shows() if s.source_id == source_id and s.slug == slug), None)
+    if show is None:
+        abort(404)
+    ids = [e["id"] for e in show.episodes if e["match_method"] == "none" and not e["match_locked"]]
+    db = get_db()
+    with db:
+        db.executemany("UPDATE episodes SET hidden = 1 WHERE id = ?", [(i,) for i in ids])
+    flash(f"Hid {len(ids)} unmatched episode{'' if len(ids) == 1 else 's'}. They're under the Hidden filter.", "ok")
+    return redirect(url_for("main.show_page", source_id=source_id, slug=slug))
+
+
+@bp.post("/episodes/<int:episode_id>/catch-up")
+def catch_up(episode_id: int):
+    """Mark this episode and everything older in its show as played (in the background)."""
+    target = next((e for s in shows() for e in s.episodes if e["id"] == episode_id), None)
+    if target is None:
+        abort(404)
+    show = next(s for s in shows() if f"{s.source_id}/{s.slug}" == target["show_scope"])
+    cutoff = target["published_at"] or ""
+    ids = [e["id"] for e in show.episodes
+           if e["state"] != "played" and (e["published_at"] or "") <= cutoff]
+    back = url_for("main.show_page", source_id=show.source_id, slug=show.slug)
+    if not ids:
+        flash("Everything up to there is already played.", "ok")
+        return redirect(back)
+    db = get_db()
+    batch_id = catchup.create_batch(db, ids, f"“{target['title']}” and everything older", target["show_scope"])
+    pc = None
+    try:
+        pc = pocketcasts_client(get_store())
+    except (NotConfigured, SecretError):
+        pass  # no Pocket Casts: mark played inside PodBridge only
+    backgrounded = run_soon(f"catch-up-{batch_id}", _run_catch_up, batch_id, pc)
+    flash(f"Marking {len(ids)} episode{'' if len(ids) == 1 else 's'} played"
+          + (" in the background. Refresh to see progress." if backgrounded else "."), "ok")
+    return redirect(back)
+
+
+def _run_catch_up(batch_id: int, pc) -> None:
+    catchup.run_batch(get_db(), batch_id, pc)
+
+
+def _undo_catch_up(batch_id: int, pc) -> None:
+    catchup.undo_batch(get_db(), batch_id, pc)
+
+
+@bp.post("/catch-up/<int:batch_id>/undo")
+def undo_catch_up(batch_id: int):
+    batch = get_db().execute("SELECT * FROM catch_up_batches WHERE id = ?", (batch_id,)).fetchone()
+    if batch is None:
+        abort(404)
+    pc = None
+    try:
+        pc = pocketcasts_client(get_store())
+    except (NotConfigured, SecretError):
+        pass
+    backgrounded = run_soon(f"catch-up-undo-{batch_id}", _undo_catch_up, batch_id, pc)
+    flash("Undoing" + (" in the background. Refresh to see progress." if backgrounded else ": done."), "ok")
+    source_id, _, slug = batch["scope"].partition("/")
+    return redirect(url_for("main.show_page", source_id=int(source_id), slug=slug))
+
+
+@bp.get("/settings/backup")
+def download_backup():
+    data = backup.make_backup(get_db())
+    name = f"podbridge-backup-{datetime.now().strftime('%Y-%m-%d-%H%M')}.db"
+    return send_file(io.BytesIO(data), mimetype="application/vnd.sqlite3", as_attachment=True, download_name=name)
+
+
+@bp.post("/settings/restore")
+def restore_backup():
+    upload = request.files.get("backup")
+    if upload is None or not upload.filename:
+        flash("Choose a backup file to restore.", "error")
+        return redirect(url_for("main.settings", _anchor="backup"))
+    drop = bool(request.form.get("without_credentials"))
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "restore.db"
+        upload.save(path)
+        try:
+            with sync_lock:  # no sync writing while the database is swapped
+                info = backup.restore(get_db(), path, current_app.extensions["secret_box"], drop_secrets=drop)
+        except backup.BackupError as exc:
+            flash(str(exc), "error")
+            return redirect(url_for("main.settings", _anchor="backup"))
+    pocketcasts_tokens().clear()
+    restart_countdown()
+    flash(f"Restored: {info.sources} sources and {info.episodes} episodes"
+          + (". Credentials were left out, so re-enter them below." if drop and info.has_secrets else "."), "ok")
+    return redirect(url_for("main.settings"))
+
+
+@bp.get("/history")
+def history_page():
+    days = history.by_day(get_db(), current_app.config["PODBRIDGE"].tz)
+    return render_template("history.html", days=days)
 
 
 @bp.get("/art/<key>")
@@ -518,10 +645,11 @@ def run_youtube_test(store: SettingsStore) -> None:
 # --- episodes ---
 
 EPISODE_FILTERS = {
-    "all": "1 = 1",
-    "in_progress": "p.patreon_watch_state = 'is_watching' AND COALESCE(p.patreon_is_watched, 0) = 0",
-    "watched": "p.patreon_is_watched = 1",
-    "unmatched": "e.match_method = 'none' AND e.match_locked = 0",
+    "all": "e.hidden = 0",
+    "in_progress": "e.hidden = 0 AND p.patreon_watch_state = 'is_watching' AND COALESCE(p.patreon_is_watched, 0) = 0",
+    "watched": "e.hidden = 0 AND p.patreon_is_watched = 1",
+    "unmatched": "e.hidden = 0 AND e.match_method = 'none' AND e.match_locked = 0",
+    "hidden": "e.hidden = 1",
 }
 
 

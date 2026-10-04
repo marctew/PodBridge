@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}History{% endblock %}
+{% block content %}
+<h1>History</h1>
+<p class="muted">What you watched or listened to, and how far you got. Recorded whenever PodBridge notices progress move.</p>
+{% if days %}
+  {% for day, entries in days.items() %}
+    <section class="history-day">
+      <h2 class="section-title">{{ day }}</h2>
+      <ul class="history-list">
+        {% for h in entries %}
+          <li>
+            <span class="history-time">{{ h.time }}</span>
+            <span class="history-side side-{{ h.side }}">
+              {{ {'patreon': 'Watched on Patreon', 'youtube': 'Watched on YouTube', 'pocketcasts': 'Listened in Pocket Casts'}[h.side] }}
+            </span>
+            <span class="history-title">{{ h.title }}</span>
+            <span class="muted">{% if h.played %}finished{% elif h.position_secs %}to {{ h.position_secs | hms }}{% else %}started{% endif %}</span>
+          </li>
+        {% endfor %}
+      </ul>
+    </section>
+  {% endfor %}
+{% else %}
+  <p class="muted">Nothing yet. History fills in as you watch and listen.</p>
+{% endif %}
+{% endblock %}

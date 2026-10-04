@@ -11,7 +11,8 @@ from .db import utcnow
 from .matching import (
     LOOSE_DATE_TOLERANCE, PatreonSide, PocketSide, match_episodes, match_episodes_loose, parse_time,
 )
-from .pocketcasts import STATUS_UNPLAYED, EpisodeState, PocketCastsClient
+from . import history
+from .pocketcasts import STATUS_PLAYED, STATUS_UNPLAYED, EpisodeState, PocketCastsClient
 from .settings_store import SettingsStore
 
 log = logging.getLogger(__name__)
@@ -77,6 +78,7 @@ def apply_pocketcasts_state(conn: sqlite3.Connection, episode_id: int, status: i
     )
     if changed:
         conn.execute("UPDATE progress SET pocketcasts_changed_at = ? WHERE episode_id = ?", (utcnow(), episode_id))
+        history.log(conn, episode_id, "pocketcasts", position, status == STATUS_PLAYED)
 
 
 def sync_matched_states(conn: sqlite3.Connection, source_id: int) -> None:
