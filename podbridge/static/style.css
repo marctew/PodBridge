@@ -563,3 +563,29 @@ button.chip.chip-on { color: var(--accent); border-color: var(--accent); }
 .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 .toast.warn { border-color: var(--accent); }
 @media (max-width: 640px) { .toast { bottom: calc(5rem + env(safe-area-inset-bottom)); } }
+
+/* Scrollbars: slim, rounded, in the theme's greys (amber when grabbed) instead of the
+   browser's default. Chrome, Edge and Safari use the ::-webkit-scrollbar rules; Firefox
+   doesn't know that selector, so only it picks up the scrollbar-color block below
+   (in Chrome, scrollbar-color would switch the rounded styling off). */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: var(--surface-2); border-radius: 999px;
+  border: 2px solid var(--bg); background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover { background-color: #3d4147; }
+::-webkit-scrollbar-thumb:active { background-color: var(--accent); }
+::-webkit-scrollbar-corner { background: transparent; }
+@supports not selector(::-webkit-scrollbar) {
+  html { scrollbar-color: var(--surface-2) var(--bg); }
+  .shelf-row, dialog#open-with { scrollbar-width: thin; scrollbar-color: var(--surface-2) transparent; }
+}
+
+/* Shelf rows (Home): a thin, faint bar under the cards. (Not hover-only: Chrome doesn't
+   reliably repaint a scrollbar when its row is hovered.) */
+.shelf-row::-webkit-scrollbar { height: 6px; }
+.shelf-row::-webkit-scrollbar-thumb { background: var(--surface-2); border: 0; }
+.shelf-row::-webkit-scrollbar-thumb:hover { background: #3d4147; }
+.shelf-row::-webkit-scrollbar-thumb:active { background: var(--accent); }
+dialog#open-with::-webkit-scrollbar-thumb { border-color: var(--surface); }
