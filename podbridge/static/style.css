@@ -18,6 +18,7 @@
 .more-menu .menu { top: auto; bottom: 100%; margin: 0 0 8px; }
 .bottom-nav .more-menu .menu-item { flex-direction: row; justify-content: flex-start; gap: 8px; padding: 10px 12px; font-size: 14px; }
 .signed-out-main { max-width: 480px; }
+.page-header .h1 { margin: 0; }
 .design-settings { max-width: 640px; margin-top: 1.25rem; }
 .problem { align-items: center; flex-wrap: wrap; }
 .problem-text { flex: 1 1 14rem; }

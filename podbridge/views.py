@@ -1150,7 +1150,7 @@ def about():
                   ("Dry run", "on" if store.get_bool("dry_run") else "off")],
         "data": [("Sources", count("SELECT COUNT(*) FROM sources")), ("Episodes", count("SELECT COUNT(*) FROM episodes")),
                  ("Sync runs", count("SELECT COUNT(*) FROM sync_runs")),
-                 ("Syncing since", first[:10] if first else "–"),
+                 ("Syncing since", f"{int(first[8:10])} {datetime.strptime(first[:10], '%Y-%m-%d'):%b %Y}" if first else "–"),
                  ("Database", _size(_bytes(Path(cfg.database_path)) + _bytes(Path(str(cfg.database_path) + "-wal")))),
                  ("Artwork cache", _size(_bytes(art_dir())))],
         "data_note": Markup("Everything lives in <code>{}</code>: the database and the artwork cache. "
