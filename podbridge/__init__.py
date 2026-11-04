@@ -39,9 +39,13 @@ def create_app(config: Config | None = None) -> Flask:
 
     # Cache-busting: the stylesheet URL carries a hash of its contents, so browsers (Safari
     # especially) fetch the new file after every update instead of reusing a stale copy.
-    css = Path(app.static_folder) / "style.css"
-    app.jinja_env.globals["asset_version"] = (
-        hashlib.sha1(css.read_bytes()).hexdigest()[:10] if css.is_file() else "dev")
+    # The design files count too: the design updater changes them without touching style.css.
+    digest = hashlib.sha1()
+    for name in ("style.css", "design/uniform.css", "design/confirm.js"):
+        asset = Path(app.static_folder) / name
+        if asset.is_file():
+            digest.update(asset.read_bytes())
+    app.jinja_env.globals["asset_version"] = digest.hexdigest()[:10]
 
     zone = ZoneInfo(config.tz)
 
@@ -74,5 +78,10 @@ def create_app(config: Config | None = None) -> Flask:
     db.init_app(app)
     auth.init_app(app)
     app.register_blueprint(views.bp)
+    try:  # the Design system card in Settings; du_flask.py is copied in by the design updater
+        from .du_flask import init_design
+        init_design(app, config.database_path.parent / "design")
+    except ImportError:
+        pass
     scheduler.init_scheduler(app)
     return app

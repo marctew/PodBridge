@@ -30,7 +30,8 @@ def csrf_token() -> str:
 
 
 def _check_csrf() -> None:
-    sent = request.form.get("csrf_token", "")
+    # Forms send it as a field; JSON calls (the Design system card) as the X-CSRF-Token header.
+    sent = request.form.get("csrf_token", "") or request.headers.get("X-CSRF-Token", "")
     expected = session.get("csrf", "")
     if not expected or not hmac.compare_digest(sent, expected):
         abort(400, "Invalid or missing CSRF token. Reload the page and try again.")

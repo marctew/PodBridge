@@ -96,7 +96,7 @@
 <section class="card backup-card" id="backup">
   <h2>Backup &amp; restore</h2>
   <p class="muted">A backup holds your sources, matches, progress, history and settings. Credentials stay encrypted
-    with your <code>ENCRYPTION_KEY</code>, so keep a copy of that key (from <code>.env</code>) somewhere safe too.
+    with your <code>ENCRYPTION_KEY</code>, so keep a copy of that key (from <code>/etc/podbridge.env</code>) somewhere safe too.
     Artwork isn't included; it's downloaded again as needed.</p>
   <p><a class="button secondary-button" href="{{ url_for('main.download_backup') }}">⬇ Download backup</a></p>
   <form method="post" action="{{ url_for('main.restore_backup') }}" enctype="multipart/form-data" class="restore-form">
@@ -112,4 +112,9 @@
       Restore</button></p>
   </form>
 </section>
+
+{% if design_status is defined %}
+<div class="design-settings">{% include "partials/design_card.html" %}</div>
+<script src="{{ url_for('static', filename='design/design-card.js', v=asset_version) }}" defer></script>
+{% endif %}
 {% endblock %}

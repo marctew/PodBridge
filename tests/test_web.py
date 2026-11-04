@@ -120,3 +120,10 @@ def test_normalise_patreon_cookie():
     assert normalise_patreon_cookie("abc") == "abc"
     assert normalise_patreon_cookie(" session_id=abc; Path=/ ") == "abc"
     assert normalise_patreon_cookie("SESSION_ID=abc;") == "abc"
+
+
+def test_csrf_token_can_come_as_a_header(authed):
+    """The Design system card posts JSON, so it sends the token as X-CSRF-Token."""
+    token = csrf_from(authed.get("/settings"))
+    assert authed.post("/logout", headers={"X-CSRF-Token": "wrong"}).status_code == 400
+    assert authed.post("/logout", headers={"X-CSRF-Token": token}).status_code == 302
