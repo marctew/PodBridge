@@ -19,9 +19,16 @@ def test_healthz_is_public_and_reveals_nothing(client):
     response = client.get("/healthz")
     assert response.status_code == 200
     assert response.get_json() == {
-        "status": "ok", "patreon_session_valid": None, "pocketcasts_session_valid": None,
+        "ok": True, "busy": [], "status": "ok", "patreon_session_valid": None, "pocketcasts_session_valid": None,
         "youtube_session_valid": None,
     }
+
+
+def test_healthz_says_when_a_sync_is_running(client):
+    from podbridge.sync import _lock
+    with _lock:
+        assert client.get("/healthz").get_json()["busy"] == ["sync"]
+    assert client.get("/healthz").get_json()["busy"] == []
 
 
 def test_wrong_password_rejected(client):

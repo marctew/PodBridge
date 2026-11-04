@@ -34,7 +34,7 @@ class Config:
     def from_env(cls, env: Mapping[str, str] = os.environ) -> Config:
         missing = [k for k in ("APP_PASSWORD", "SECRET_KEY", "ENCRYPTION_KEY") if not env.get(k)]
         if missing:
-            raise ConfigError(f"Missing required settings: {', '.join(missing)}. See .env.example.")
+            raise ConfigError(f"Missing required settings: {', '.join(missing)}. See deploy/podbridge.env.example.")
         config = cls(
             app_password=env["APP_PASSWORD"],
             secret_key=env["SECRET_KEY"],

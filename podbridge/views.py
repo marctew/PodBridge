@@ -1114,5 +1114,9 @@ def healthz():
         state = connection_status(store, service)["state"]
         return {"ok": True, "expired": False, "error": False}.get(state)
 
-    return jsonify(status="ok", patreon_session_valid=valid("patreon"),
+    # busy: jobs a restart now would cut short (scripts/update.sh waits for them).
+    busy = [name for name, on in (("sync", sync_lock.locked()),
+                                  ("youtube dates", current_app.extensions.get("youtube_backfill", {}).get("running")))
+            if on]
+    return jsonify(ok=True, busy=busy, status="ok", patreon_session_valid=valid("patreon"),
                    pocketcasts_session_valid=valid("pocketcasts"), youtube_session_valid=valid("youtube"))

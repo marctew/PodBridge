@@ -52,17 +52,18 @@ It's self-hosted, for one user, and has a Plex-style web interface.
 
 ## Deploy
 
-PodBridge runs as one Docker container. This assumes a Linux host (for example an Ubuntu LXC on Proxmox) with Docker and Compose installed.
+PodBridge runs as a systemd service on a Linux host (for example an Ubuntu LXC on Proxmox), built to
+the homelab app standard (`docs/design/APP-STANDARD.md`).
 
 ```bash
 git clone https://github.com/marctew/PodBridge.git /opt/podbridge
 cd /opt/podbridge
-cp .env.example .env && chmod 600 .env
-nano .env
-docker compose up -d --build
+sudo bash deploy/install.sh        # first run writes /etc/podbridge.env from the example
+sudo nano /etc/podbridge.env
+sudo bash deploy/install.sh        # second run starts it
 ```
 
-In `.env`, set:
+In `/etc/podbridge.env`, set:
 
 | Setting | What it is |
 |---|---|
@@ -74,7 +75,7 @@ In `.env`, set:
 
 PodBridge listens on port **7330**. Put it behind your reverse proxy, or open `http://<host>:7330`.
 
-The compose file pins DNS to `1.1.1.1` / `8.8.8.8`, because some LXC setups resolve unreliably.
+The service runs as the `podbridge` user, with its data in `/var/lib/podbridge`. The LXC has had intermittent DNS failures, so every request retries on network errors.
 
 ## First-time setup
 
@@ -138,22 +139,22 @@ Your normal email and password. PodBridge keeps a refresh token, so it doesn't l
 ## Updating
 
 ```bash
-cd /opt/podbridge && git pull && docker compose up -d --build
+sudo /opt/podbridge/scripts/update.sh --pull
 ```
 
-Database changes are applied automatically on start.
+It installs any new dependencies, checks the code compiles, restarts and waits for `/healthz`. It won't restart in the middle of a sync unless you add `--force`. Database changes are applied automatically on start.
 
 ## Backups
 
 - **Database:** Settings → **Download backup** saves your sources, matches, progress, history and settings as one `.db` file. **Restore** in the same place swaps one back in.
-- **`ENCRYPTION_KEY`:** your logins inside the backup are encrypted with it, so keep a copy of `.env` (or just that line) somewhere safe.
+- **`ENCRYPTION_KEY`:** your logins inside the backup are encrypted with it, so keep a copy of `/etc/podbridge.env` (or just that line) somewhere safe.
   - **Key lost:** a restore can still bring everything back **without credentials**, and you re-enter them.
 - **Artwork:** not backed up. It's downloaded again as needed.
 
-The live database is in the `podbridge-data` Docker volume. To copy it from the host:
+The live database is `/var/lib/podbridge/podbridge.db`. To copy it safely while the app runs:
 
 ```bash
-docker compose cp podbridge:/data/podbridge.db ./podbridge-copy.db
+sudo python3 -c "import sqlite3; sqlite3.connect('/var/lib/podbridge/podbridge.db').backup(sqlite3.connect('/root/podbridge-copy.db'))"
 ```
 
 ## Troubleshooting
@@ -169,7 +170,7 @@ docker compose cp podbridge:/data/podbridge.db ./podbridge-copy.db
 | iPhone shows old styling after an update | Pull down to reload once. |
 | "A sync is already running" | Wait a minute. Only one sync runs at a time. |
 
-`/healthz` needs no login and reports whether the app is up and each login was valid at the last check. You can point an uptime monitor at it.
+`/healthz` needs no login and reports whether the app is up, whether a sync is running (`busy`), and whether each login was valid at the last check. You can point an uptime monitor at it.
 
 ## How syncing decides
 

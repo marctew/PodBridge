@@ -1,0 +1,19 @@
+[Unit]
+Description=PodBridge (Patreon and YouTube progress into Pocket Casts)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=podbridge
+Group=podbridge
+Environment=DATABASE_PATH=/var/lib/podbridge/podbridge.db
+Environment=PYTHONUNBUFFERED=1
+EnvironmentFile=/etc/podbridge.env
+WorkingDirectory=/opt/podbridge
+# One worker: the sync scheduler runs in-process and must exist exactly once.
+ExecStart=/opt/podbridge/.venv/bin/gunicorn --bind 0.0.0.0:7330 --workers 1 --threads 4 --timeout 120 --graceful-timeout 30 --access-logfile - wsgi:app
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
