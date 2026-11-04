@@ -8,8 +8,6 @@
 /* ------------------------------------------------------------- shell */
 .brand { color: rgb(var(--text)); }
 .brand img { border-radius: var(--r-sm); }
-.sidebar-foot { margin-top: 24px; padding-top: 16px; border-top: 1px solid rgb(var(--border)); }
-.sidebar-foot form { margin: 0 0 4px; }
 .topbar-brand { margin: 0; padding: 0; font-size: 16px; }
 .topbar-brand img { width: 28px; height: 28px; }
 .more-menu { display: flex; justify-content: center; }

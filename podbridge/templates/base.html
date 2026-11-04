@@ -54,19 +54,13 @@
       <a href="{{ url_for(endpoint) }}" class="nav-link {{ 'active' if request.endpoint == endpoint }}" {% if request.endpoint == endpoint %}aria-current="page"{% endif %}>{{ icon(glyph, 'icon') }}{{ label }}</a>
       {% endfor %}
     </nav>
-    <div class="sidebar-foot">
-      <form method="post" action="{{ url_for('auth.logout') }}">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <button type="submit" class="nav-link">{{ icon('logout', 'icon') }}Log out</button>
-      </form>
-      {% include "partials/theme_switch.html" %}
-    </div>
+    {% with signout_url=url_for('auth.logout'), about_url=url_for('main.about') %}{% include "partials/sidebar_foot.html" %}{% endwith %}
   </aside>
   <header class="topbar">
     <a href="{{ url_for('main.dashboard') }}" class="brand topbar-brand"><img src="{{ url_for('static', filename='icons/icon-192.png') }}" alt=""><span>Pod<span class="brand-gradient">Bridge</span></span></a>
     <form method="post" action="{{ url_for('auth.logout') }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <button type="submit" class="btn-icon" aria-label="Log out" title="Log out">{{ icon('logout', 'icon') }}</button>
+      <button type="submit" class="btn-icon" aria-label="Sign out" title="Sign out">{{ icon('logout', 'icon') }}</button>
     </form>
   </header>
   <main class="main">

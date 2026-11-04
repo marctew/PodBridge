@@ -1104,6 +1104,66 @@ def link_source_save(source_id: int):
 
 # --- health ---
 
+def _bytes(path: Path) -> int:
+    try:
+        if path.is_file():
+            return path.stat().st_size
+        return sum(f.stat().st_size for f in path.rglob("*") if f.is_file()) if path.exists() else 0
+    except OSError:
+        return 0
+
+
+def _size(n: float) -> str:
+    for unit in ("bytes", "KB", "MB", "GB"):
+        if n < 1024 or unit == "GB":
+            return f"{n:.0f} {unit}" if unit == "bytes" else f"{n:.1f} {unit}".replace(".0 ", " ")
+        n /= 1024
+    return ""
+
+
+@bp.get("/about")
+def about():
+    """DESIGN-SPEC 7.15: the app, Your data, Built with."""
+    from importlib.metadata import version as pkg_version
+    from markupsafe import Markup
+    from .scheduler import scheduler_running
+    db = get_db()
+    cfg = current_app.config["PODBRIDGE"]
+
+    def count(sql: str) -> str:
+        try:
+            return f"{db.execute(sql).fetchone()[0]:,}"
+        except Exception:  # noqa: BLE001  (a table an older schema doesn't have)
+            return "–"
+    try:
+        server = "gunicorn " + pkg_version("gunicorn")
+    except Exception:  # noqa: BLE001
+        server = "the development server"
+    first = db.execute("SELECT MIN(started_at) FROM sync_runs").fetchone()[0]
+    store = get_store()
+    about = {
+        "tagline": "Patreon and YouTube playback progress, synced into Pocket Casts",
+        "github": "https://github.com/marctew/PodBridge",
+        "name": ("Pod", "Bridge"), "icon": url_for("static", filename="icons/icon-192.png"),
+        "facts": [("Server", server),
+                  ("Scheduler", f"every {store.get_int('sync_interval_minutes')} minutes" if scheduler_running() else "off"),
+                  ("Dry run", "on" if store.get_bool("dry_run") else "off")],
+        "data": [("Sources", count("SELECT COUNT(*) FROM sources")), ("Episodes", count("SELECT COUNT(*) FROM episodes")),
+                 ("Sync runs", count("SELECT COUNT(*) FROM sync_runs")),
+                 ("Syncing since", first[:10] if first else "–"),
+                 ("Database", _size(_bytes(Path(cfg.database_path)) + _bytes(Path(str(cfg.database_path) + "-wal")))),
+                 ("Artwork cache", _size(_bytes(art_dir())))],
+        "data_note": Markup("Everything lives in <code>{}</code>: the database and the artwork cache. "
+                            "The keys are in <code>/etc/podbridge.env</code>.").format(Path(cfg.database_path).parent),
+        "built_with": ["Flask, SQLite and gunicorn, with APScheduler for the syncs",
+                       "requests, and cryptography to keep the logins encrypted",
+                       "The Patreon, YouTube and Pocket Casts web APIs",
+                       "Design Uniformity for the look"],
+        "footnote": "Not affiliated with Patreon, YouTube or Pocket Casts.",
+    }
+    return render_template("about.html", about=about)
+
+
 @bp.get("/healthz")
 def healthz():
     """No auth. App up + whether each session was valid at last check; no detail."""

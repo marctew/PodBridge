@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+__version__ = "0.1.0"
+
 import hashlib
 import mimetypes
 from datetime import datetime, timedelta
@@ -80,7 +82,7 @@ def create_app(config: Config | None = None) -> Flask:
     app.register_blueprint(views.bp)
     try:  # the Design system card in Settings; du_flask.py is copied in by the design updater
         from .du_flask import init_design
-        init_design(app, config.database_path.parent / "design")
+        init_design(app, config.database_path.parent / "design", version=__version__)
     except ImportError:
         pass
     scheduler.init_scheduler(app)
