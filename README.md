@@ -23,7 +23,7 @@ It's self-hosted, for one user, and has a Plex-style web interface.
 
 - **Sources:**
   - Patreon campaigns, whole or one collection.
-  - YouTube channels.
+  - YouTube channels, or a single playlist (for a podcast that lives on someone else's channel).
 
   Each is linked to one or more Pocket Casts podcasts. One YouTube channel can feed two shows (for example The News Agents and The News Agents USA): videos are routed by the "| Show name" at the end of their titles.
 - **Matching:** pairs each source episode with its Pocket Casts episode.
@@ -80,10 +80,10 @@ The service runs as the `podbridge` user, with its data in `/var/lib/podbridge`.
 ## First-time setup
 
 1. **Log in** with `APP_PASSWORD`.
-2. **Settings:** enter your Patreon cookie and Pocket Casts login, then press **Save & test** for each. The YouTube cookies are only needed for YouTube channels. See [Getting your logins](#getting-your-logins).
+2. **Settings:** enter your Patreon cookie and Pocket Casts login, then press **Save & test** for each. The YouTube cookies are only needed for YouTube sources. See [Getting your logins](#getting-your-logins).
 3. **Sources:**
    - The Button Boys Patreon is set up as an example. Use **Widen to all posts** to cover the whole campaign, or add your own source.
-   - For YouTube, use **Add a YouTube channel** (for example `@TheNewsAgents`).
+   - For YouTube, use **Add a YouTube channel or playlist**: a handle (for example `@TheNewsAgents`), a channel URL, or a playlist URL (`…/playlist?list=PL…`) when the show is one playlist on a bigger channel.
    - For each source, **Link podcast** and tick the Pocket Casts podcasts it feeds.
 4. **Matching:** press **Refresh**, then check the **Unmatched** filter. Fix anything with the Match link: there's a filter box, and **Move here** steals a wrong match.
 5. **Dry run** is on to start with. Press **Sync now** and read **Activity**: it lists what each sync *would* do. When that looks right, untick **Dry run** in Settings.

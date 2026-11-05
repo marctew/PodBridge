@@ -153,13 +153,24 @@ def test_loose_matching_refuses_close_calls():
 # --- discovery and sync with fakes ---
 
 class FakeYouTube:
-    def __init__(self, history, details, logged_in=True, uploads=None):
+    def __init__(self, history, details, logged_in=True, uploads=None, playlists=None):
         self._history, self._details, self.logged_in = history, details, logged_in
         self.uploads = uploads or {}
+        self.playlists = playlists or {}  # playlist ID -> (title, [PlaylistItem])
         self.detail_calls: list[str] = []
 
     def channel_videos(self, channel_id):
         return list(self.uploads.get(channel_id, []))
+
+    def playlist_videos(self, playlist_id):
+        return list(self.playlists.get(playlist_id, ("", []))[1])
+
+    def resolve_playlist(self, url_or_id):
+        from podbridge.youtube import Playlist, playlist_id_from
+        playlist_id = playlist_id_from(url_or_id)
+        if playlist_id not in self.playlists:
+            return None
+        return Playlist(playlist_id, self.playlists[playlist_id][0])
 
     def check_session(self):
         return self.logged_in

@@ -5,6 +5,8 @@ this reads the pages the website renders for a signed-in user:
   - /feed/history: recent watches with the red "percent watched" bar
   - /watch?v=ID:   channel, publish date and exact length (fetched once per video)
   - /@handle:      resolves a handle to a channel ID
+  - /playlist?list=ID: a channel's uploads, or any playlist added as a source (later pages via
+                   the page's own continuation tokens)
 
 Both page shapes are undocumented and change; parsing is defensive and all of
 it lives in this module. Cookies come from a cookies.txt export; any cookies
@@ -20,7 +22,7 @@ from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Protocol
-from urllib.parse import urlsplit
+from urllib.parse import parse_qsl, urlsplit
 
 import requests
 from requests.cookies import create_cookie
@@ -34,6 +36,10 @@ REQUEST_GAP_SECS = 1.5
 COOKIE_DOMAINS = ("youtube.com", "google.com")
 VIDEO_ID = re.compile(r"^[A-Za-z0-9_-]{11}$")
 CHANNEL_ID = re.compile(r"^UC[A-Za-z0-9_-]{22}$")
+# Public playlists: PL (user-made), OL (albums/podcasts), UU/UULF (uploads). Not RD (mixes), WL/LL (private).
+PLAYLIST_ID = re.compile(r"^(?:PL|OL|UU)[A-Za-z0-9_-]{10,}$")
+MAX_PLAYLIST_PAGES = 10  # ~100 videos a page
+FALLBACK_CLIENT_VERSION = "2.20261101.00.00"
 
 
 class YouTubeError(RuntimeError):
@@ -77,16 +83,37 @@ class Channel:
     title: str
 
 
+@dataclass(frozen=True)
+class Playlist:
+    playlist_id: str
+    title: str
+
+
 class YouTubeClient(Protocol):
     def check_session(self) -> bool: ...
     def history(self) -> list[HistoryItem]: ...
     def video_details(self, video_id: str) -> VideoDetails | None: ...
     def resolve_channel(self, handle_or_id: str) -> Channel | None: ...
     def channel_videos(self, channel_id: str) -> list[PlaylistItem]: ...
+    def resolve_playlist(self, url_or_id: str) -> Playlist | None: ...
+    def playlist_videos(self, playlist_id: str) -> list[PlaylistItem]: ...
 
 
 def watch_url(video_id: str) -> str:
     return f"{BASE_URL}/watch?v={video_id}"
+
+
+def is_channel_id(value: str) -> bool:
+    return bool(CHANNEL_ID.match(value))
+
+
+def playlist_id_from(value: str) -> str | None:
+    """The playlist ID in a playlist or watch URL (`list=`), or a bare ID; None if it isn't one."""
+    value = value.strip()
+    if "list=" in value:
+        query = urlsplit(value if "://" in value else f"https://{value}").query
+        value = next((v for k, v in parse_qsl(query) if k == "list"), "")
+    return value if PLAYLIST_ID.match(value) else None
 
 
 # --- cookies ---
@@ -244,6 +271,36 @@ def parse_playlist(data: Any) -> list[PlaylistItem]:
     return items
 
 
+def parse_playlist_page(data: Any, playlist_id: str) -> Playlist | None:
+    """Title from the playlist page; None when the page has no playlist (private, deleted, bad ID)."""
+    for d in _walk(data):
+        meta = d.get("playlistMetadataRenderer")
+        if isinstance(meta, dict) and _text(meta.get("title")):
+            return Playlist(playlist_id, _text(meta["title"]).strip())
+    for d in _walk(data):
+        micro = d.get("microformatDataRenderer")
+        if isinstance(micro, dict) and _text(micro.get("title")):
+            return Playlist(playlist_id, _text(micro["title"]).strip())
+    return None
+
+
+def continuation_token(data: Any) -> str | None:
+    """The 'load more' token at the end of a playlist page or continuation response."""
+    for d in _walk(data):
+        renderer = d.get("continuationItemRenderer")
+        if isinstance(renderer, dict):
+            for c in _walk(renderer):
+                command = c.get("continuationCommand")
+                if isinstance(command, dict) and isinstance(command.get("token"), str) and command["token"]:
+                    return command["token"]
+    return None
+
+
+def client_version(html: str) -> str:
+    match = re.search(r'"INNERTUBE_CLIENT_VERSION"\s*:\s*"([0-9.]+)"', html)
+    return match.group(1) if match else FALLBACK_CLIENT_VERSION
+
+
 def uploads_playlists(channel_id: str) -> list[str]:
     """Long-form uploads (UULF…, no Shorts), then all uploads (UU…) as a fallback."""
     suffix = channel_id[2:]
@@ -381,6 +438,12 @@ class HttpYouTubeClient:
     def resolve_channel(self, handle_or_id: str) -> Channel | None:
         return self.public.resolve_channel(handle_or_id)
 
+    def resolve_playlist(self, url_or_id: str) -> Playlist | None:
+        return self.public.resolve_playlist(url_or_id)
+
+    def playlist_videos(self, playlist_id: str) -> list[PlaylistItem]:
+        return self.public.playlist_videos(playlist_id)
+
 
 class PublicYouTubeClient:
     """youtube.com pages that need no login: watch pages, playlists, channel pages.
@@ -397,7 +460,23 @@ class PublicYouTubeClient:
                                gap_secs=gap_secs, session=session, **extra)
 
     def _page(self, path: str) -> str:
-        response = self.http.request("GET", path)
+        return self._checked(self.http.request("GET", path), path)
+
+    def _browse(self, token: str, version: str) -> Any:
+        """One continuation of a playlist (the same call the page's own 'load more' makes)."""
+        body = {"context": {"client": {"clientName": "WEB", "clientVersion": version, "hl": "en", "gl": "GB"}},
+                "continuation": token}
+        response = self._checked(self.http.request("POST", "/youtubei/v1/browse?prettyPrint=false", json=body,
+                                                   headers={"X-YouTube-Client-Name": "1",
+                                                            "X-YouTube-Client-Version": version}),
+                                 "/youtubei/v1/browse")
+        try:
+            return json.loads(response)
+        except ValueError:
+            raise YouTubeError("YouTube's playlist continuation wasn't JSON") from None
+
+    @staticmethod
+    def _checked(response: Any, path: str) -> str:
         status = response.status_code
         if status in (403, 429):
             raise YouTubeBlocked(f"YouTube returned HTTP {status}")
@@ -437,6 +516,39 @@ class PublicYouTubeClient:
             if items:
                 return items
         return []
+
+    def resolve_playlist(self, url_or_id: str) -> Playlist | None:
+        playlist_id = playlist_id_from(url_or_id)
+        if playlist_id is None:
+            return None
+        html = self._page(f"/playlist?list={playlist_id}")
+        return parse_playlist_page(extract_json(html, "ytInitialData"), playlist_id)
+
+    def playlist_videos(self, playlist_id: str, max_pages: int = MAX_PLAYLIST_PAGES) -> list[PlaylistItem]:
+        """Every video in the playlist, in playlist order, following 'load more' up to max_pages.
+        A failed continuation keeps what was read so far."""
+        if not PLAYLIST_ID.match(playlist_id):
+            return []
+        html = self._page(f"/playlist?list={playlist_id}")
+        data = extract_json(html, "ytInitialData")
+        items = parse_playlist(data)
+        seen = {i.video_id for i in items}
+        token, version = continuation_token(data), client_version(html)
+        for _ in range(max_pages - 1):
+            if not token:
+                break
+            try:
+                data = self._browse(token, version)
+            except YouTubeBlocked:
+                raise
+            except YouTubeError:
+                break
+            for item in parse_playlist(data):
+                if item.video_id not in seen:
+                    seen.add(item.video_id)
+                    items.append(item)
+            token = continuation_token(data)
+        return items
 
     def resolve_channel(self, handle_or_id: str) -> Channel | None:
         value = handle_or_id.strip().rstrip("/")
