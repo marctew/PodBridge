@@ -1,0 +1,14 @@
+<!-- PodBridge: Design Uniformity app icon (Media: violet to pink). The original amber bridge, in white on the
+     shared tile: an arch over the deck, two hangers, two pillars and a play button under the arch.
+     scripts/make_icons.py draws the PNG sizes from the same shapes, so change both together. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#8b5cf6"/><stop offset="1" stop-color="#ec4899"/></linearGradient></defs>
+  <rect width="64" height="64" rx="16" fill="url(#g)"/>
+  <path d="M15 34.4A17 17 0 0 1 49 34.4H46.1A14.1 14.1 0 0 0 17.9 34.4Z" fill="#fff" opacity=".85"/>
+  <rect x="22.3" y="23.7" width="1.4" height="10.7" rx=".7" fill="#fff" opacity=".7"/>
+  <rect x="40.3" y="23.7" width="1.4" height="10.7" rx=".7" fill="#fff" opacity=".7"/>
+  <rect x="14" y="34.4" width="36" height="3.1" rx="1.55" fill="#fff"/>
+  <rect x="18.1" y="37.5" width="3" height="7" rx="1.5" fill="#fff" opacity=".7"/>
+  <rect x="42.9" y="37.5" width="3" height="7" rx="1.5" fill="#fff" opacity=".7"/>
+  <path d="M29.8 25.4v6.2a.9.9 0 0 0 1.35.78l4.9-3.1a.9.9 0 0 0 0-1.56l-4.9-3.1a.9.9 0 0 0-1.35.78Z" fill="#fff"/>
+</svg>

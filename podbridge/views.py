@@ -1144,7 +1144,7 @@ def about():
     about = {
         "tagline": "Patreon and YouTube playback progress, synced into Pocket Casts",
         "github": "https://github.com/marctew/PodBridge",
-        "name": ("Pod", "Bridge"), "icon": url_for("static", filename="icons/icon-192.png"),
+        "name": ("Pod", "Bridge"), "icon": url_for("static", filename="icons/icon.svg"),
         "facts": [("Server", server),
                   ("Scheduler", f"every {store.get_int('sync_interval_minutes')} minutes" if scheduler_running() else "off"),
                   ("Dry run", "on" if store.get_bool("dry_run") else "off")],

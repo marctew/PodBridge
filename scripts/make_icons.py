@@ -1,8 +1,14 @@
-"""Generate PodBridge's app icons (home screen, favicon, web manifest). Dev-only: needs Pillow.
+"""Generate PodBridge's app icons (favicon, home screen, web manifest). Dev-only: needs Pillow.
 
-The icon is an amber bridge with a play button under the arch, on PodBridge's near-black
-background. It's drawn at 1024 px and scaled down for each size. The background fills the
-whole square because iOS and Android round the corners themselves.
+The icon follows Design Uniformity's app icon (DESIGN-SPEC 10): a 64 x 64 tile with a 16 px radius and a
+diagonal violet-to-pink gradient (Media), and one white glyph on the inner 36 x 36, with depth from opacity
+steps only. The glyph is PodBridge's bridge: an arch over the deck, two hangers, two pillars and a play
+button. podbridge/static/icons/icon.svg is the same drawing; change both together.
+
+The PNGs are drawn at 1024 px (16 x the 64-unit design) and scaled down:
+- favicon-32, icon-192 and icon-512 are the rounded tile with transparent corners, like icon.svg;
+- apple-touch-icon fills the square, because iOS rounds the corners itself;
+- icon-maskable-512 fills the square with the glyph shrunk into Android's safe zone (the middle 80%).
 
 Usage:  python scripts/make_icons.py
 """
@@ -14,48 +20,73 @@ from pathlib import Path
 from PIL import Image, ImageDraw
 
 OUT = Path(__file__).resolve().parent.parent / "podbridge" / "static" / "icons"
-BG = (20, 21, 22, 255)        # --bg
-AMBER = (229, 160, 13, 255)   # --accent
 SIZE = 1024
+UNIT = SIZE / 64
+VIOLET, PINK = (139, 92, 246), (236, 72, 153)   # --accent and --accent-2 (Media)
+
+# The glyph, in the 64-unit space of icon.svg: (kind, geometry, opacity).
+ARCH = (32, 34.4, 17, 14.1)                     # centre x, centre y (the deck's top), outer and inner radius
+RECTS = [                                       # x, y, width, height, opacity
+    (22.3, 23.7, 1.4, 10.7, 0.7), (40.3, 23.7, 1.4, 10.7, 0.7),   # hangers
+    (14, 34.4, 36, 3.1, 1.0),                                      # deck
+    (18.1, 37.5, 3, 7, 0.7), (42.9, 37.5, 3, 7, 0.7),              # pillars
+]
+PLAY = [(29.8, 24.6), (29.8, 32.4), (36.4, 28.5)]
 
 
-def draw(size: int = SIZE, padding: float = 0.0) -> Image.Image:
-    """padding shrinks the artwork towards the centre (for 'maskable' icons, whose edges may be cropped)."""
-    img = Image.new("RGBA", (size, size), BG)
-    d = ImageDraw.Draw(img)
-    scale = size / SIZE * (1 - 2 * padding)
-    off = size * padding
+def gradient(size: int) -> Image.Image:
+    """The diagonal gradient, top left to bottom right, as in icon.svg."""
+    ramp = Image.linear_gradient("L").resize((size, size))                 # 0 at the top, 255 at the bottom
+    t = Image.blend(ramp, ramp.transpose(Image.Transpose.TRANSPOSE), 0.5)  # (x + y) / 2: the diagonal
+    return Image.composite(Image.new("RGB", (size, size), PINK), Image.new("RGB", (size, size), VIOLET), t)
 
+
+def glyph_layers(shrink: float = 1.0) -> list[tuple[Image.Image, float]]:
+    """One mask per shape, scaled about the tile's centre by `shrink`."""
     def p(x: float, y: float) -> tuple[float, float]:
-        y -= 70  # optical centring: the artwork spans y 330..830
-        return off + x * scale, off + y * scale
+        return (32 + (x - 32) * shrink) * UNIT, (32 + (y - 32) * shrink) * UNIT
 
-    def box(x0, y0, x1, y1):
-        return [*p(x0, y0), *p(x1, y1)]
+    def r(v: float) -> float:
+        return v * shrink * UNIT
 
-    w = lambda v: max(1, round(v * scale))  # noqa: E731
-    # Arch
-    d.arc(box(170, 330, 854, 950), start=180, end=360, fill=AMBER, width=w(58))
-    # Deck
-    d.rounded_rectangle(box(150, 628, 874, 690), radius=w(31), fill=AMBER)
-    # Pillars
-    d.rounded_rectangle(box(232, 640, 292, 830), radius=w(14), fill=AMBER)
-    d.rounded_rectangle(box(732, 640, 792, 830), radius=w(14), fill=AMBER)
-    # Hangers between arch and deck
-    for x in (330, 694):
-        d.rounded_rectangle(box(x - 13, 450, x + 13, 640), radius=w(13), fill=AMBER)
-    # Play button under the arch
-    d.polygon([p(468, 430), p(468, 590), p(590, 510)], fill=AMBER)
+    layers = []
+    cx, cy, outer, inner = ARCH
+    m = Image.new("L", (SIZE, SIZE), 0)
+    d = ImageDraw.Draw(m)
+    d.ellipse([*p(cx - outer, cy - outer), *p(cx + outer, cy + outer)], fill=255)
+    d.ellipse([*p(cx - inner, cy - inner), *p(cx + inner, cy + inner)], fill=0)
+    d.rectangle([0, p(0, cy)[1], SIZE, SIZE], fill=0)                      # only the top half
+    layers.append((m, 0.85))
+    for x, y, w, h, opacity in RECTS:
+        m = Image.new("L", (SIZE, SIZE), 0)
+        ImageDraw.Draw(m).rounded_rectangle([*p(x, y), *p(x + w, y + h)], radius=r(min(w, h) / 2), fill=255)
+        layers.append((m, opacity))
+    m = Image.new("L", (SIZE, SIZE), 0)
+    ImageDraw.Draw(m).polygon([p(x, y) for x, y in PLAY], fill=255)
+    layers.append((m, 1.0))
+    return layers
+
+
+def draw(rounded: bool, shrink: float = 1.0) -> Image.Image:
+    img = gradient(SIZE).convert("RGBA")
+    white = Image.new("RGBA", (SIZE, SIZE), (255, 255, 255, 255))
+    for mask, opacity in glyph_layers(shrink):
+        img = Image.composite(white, img, mask.point(lambda v, o=opacity: round(v * o)))
+    if rounded:
+        corners = Image.new("L", (SIZE, SIZE), 0)
+        ImageDraw.Draw(corners).rounded_rectangle([0, 0, SIZE - 1, SIZE - 1], radius=round(16 * UNIT), fill=255)
+        img.putalpha(corners)
     return img
 
 
 def main() -> None:
     OUT.mkdir(parents=True, exist_ok=True)
-    big = draw()
-    for name, px in (("apple-touch-icon.png", 180), ("icon-192.png", 192), ("icon-512.png", 512),
-                     ("favicon-32.png", 32)):
-        big.resize((px, px), Image.LANCZOS).save(OUT / name, optimize=True)
-    draw(padding=0.12).resize((512, 512), Image.LANCZOS).save(OUT / "icon-maskable-512.png", optimize=True)
+    tile, square = draw(rounded=True), draw(rounded=False)
+    for name, px in (("favicon-32.png", 32), ("icon-192.png", 192), ("icon-512.png", 512)):
+        tile.resize((px, px), Image.LANCZOS).save(OUT / name, optimize=True)
+    square.resize((180, 180), Image.LANCZOS).convert("RGB").save(OUT / "apple-touch-icon.png", optimize=True)
+    draw(rounded=False, shrink=0.8).resize((512, 512), Image.LANCZOS).convert("RGB").save(
+        OUT / "icon-maskable-512.png", optimize=True)
     print(f"Icons written to {OUT}")
 
 
