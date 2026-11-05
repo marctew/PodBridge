@@ -269,15 +269,17 @@ def refresh_youtube_episode(conn: sqlite3.Connection, store: SettingsStore, clie
 def discover_youtube_all(conn: sqlite3.Connection, store: SettingsStore, client,
                          detail_budget: int | None = None) -> list[DiscoveryResult]:
     """Every recent upload of each enabled YouTube channel source (about 100, from the uploads
-    playlist), with progress from the first page of watch history.
+    playlist), and every video of each playlist source, with progress from the first page of
+    watch history.
 
     Exact publish dates need one watch-page request per video; at most
     MAX_DETAIL_FETCHES_PER_RUN are made per run and later runs fill in the rest.
     """
-    from .youtube import YouTubeSessionExpired
+    from .youtube import YouTubeSessionExpired, is_channel_id
 
     if not check_youtube_session(store, client):
         raise YouTubeSessionExpired("YouTube cookies are no longer signed in")
+    # Keyed by campaign_id: a channel ID (UC...) or a playlist ID (PL...).
     sources = {s["campaign_id"]: s for s in conn.execute(
         "SELECT * FROM sources WHERE enabled = 1 AND kind = 'youtube' ORDER BY id")}
     results = {cid: DiscoveryResult(source_id=s["id"], label=s["label"]) for cid, s in sources.items()}
@@ -289,34 +291,38 @@ def discover_youtube_all(conn: sqlite3.Connection, store: SettingsStore, client,
     def cached(video_id: str):
         return conn.execute("SELECT * FROM youtube_videos WHERE video_id = ?", (video_id,)).fetchone()
 
-    # 1. Each channel's uploads; progress where the video is in history.
-    listed: dict[str, str] = {}
-    for channel_id, source in sources.items():
-        uploads = client.channel_videos(channel_id)
-        results[channel_id].posts_seen = len(uploads)
+    # 1. Each channel's uploads and each playlist's videos; progress where the video is in history.
+    listed: dict[str, list[str]] = {}  # video ID -> the sources that list it (a playlist can overlap a channel)
+    for key, source in sources.items():
+        uploads = client.channel_videos(key) if is_channel_id(key) else client.playlist_videos(key)
+        results[key].posts_seen = len(uploads)
         for item in uploads:
-            listed[item.video_id] = channel_id
+            listed.setdefault(item.video_id, []).append(key)
             row = cached(item.video_id)
             duration = item.duration_secs or (row["duration_secs"] if row else None)
             percent = history[item.video_id].percent if item.video_id in history else None
-            _store_video(conn, source, results[channel_id], item.video_id, item.title,
+            _store_video(conn, source, results[key], item.video_id, item.title,
                          row["published_at"] if row else None, duration, percent)
 
-    # 2. Exact publish dates for listed videos, newest first, within the per-run budget.
-    for video_id, channel_id in listed.items():
+    # 2. Exact publish dates for listed videos, in list order (channels: newest first), within the per-run budget.
+    for video_id, keys in listed.items():
         row = cached(video_id)
         if row is not None and row["published_at"]:
             continue
         row = _cached_details(conn, client, video_id, budget)
         if row is not None and row["published_at"]:
             with conn:
-                conn.execute("UPDATE episodes SET published_at = ?, duration_secs = COALESCE(duration_secs, ?) "
-                             "WHERE source_id = ? AND patreon_post_id = ?",
-                             (row["published_at"], row["duration_secs"], sources[channel_id]["id"], video_id))
+                for key in keys:
+                    conn.execute("UPDATE episodes SET published_at = ?, duration_secs = COALESCE(duration_secs, ?) "
+                                 "WHERE source_id = ? AND patreon_post_id = ?",
+                                 (row["published_at"], row["duration_secs"], sources[key]["id"], video_id))
         if budget[0] <= 0:
             break
 
     # 3. Watched videos older than the uploads page: the watch page says which channel they're from.
+    # (Playlist sources are read in full in step 1, so this only ever finds channel sources.)
+    if not any(is_channel_id(key) for key in sources):
+        return list(results.values())
     for video_id, item in history.items():
         if video_id in listed:
             continue

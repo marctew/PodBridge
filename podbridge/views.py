@@ -825,7 +825,7 @@ def refresh_episodes():
     if has_sources(db, "youtube"):
         try:
             for r in discover_youtube_all(db, store, youtube_client(store)):
-                flash(f"YouTube · {r.label}: {r.posts_seen} recent uploads, {r.added} new", "ok")
+                flash(f"YouTube · {r.label}: {r.posts_seen} videos listed, {r.added} new", "ok")
         except YOUTUBE_FAILURES as exc:
             flash(youtube_failure(store, exc), "error")
 
@@ -995,28 +995,36 @@ def toggle_source(source_id: int):
 
 @bp.post("/sources/youtube")
 def add_youtube_source():
+    """A channel (handle, URL or UC... ID) or a playlist (URL with list=, or its ID)."""
+    from .youtube import playlist_id_from
+
     handle = request.form.get("channel", "").strip()
     if not handle:
-        flash("Enter a channel handle (like @TheNewsAgents) or channel URL.", "error")
+        flash("Enter a channel handle (like @TheNewsAgents), a channel URL or a playlist URL.", "error")
         return redirect(url_for("main.sources"))
     store = get_store()
+    is_playlist = playlist_id_from(handle) is not None
+    kind = "playlist" if is_playlist else "channel"
     try:
-        channel = youtube_client(store).resolve_channel(handle)
+        client = youtube_client(store)
+        found = client.resolve_playlist(handle) if is_playlist else client.resolve_channel(handle)
     except YOUTUBE_FAILURES as exc:
         flash(youtube_failure(store, exc), "error")
         return redirect(url_for("main.sources"))
-    if channel is None:
-        flash(f"Couldn't find a YouTube channel for “{handle}”.", "error")
+    if found is None:
+        hint = " It may be private." if is_playlist else ""
+        flash(f"Couldn't find a YouTube {kind} for “{handle}”.{hint}", "error")
         return redirect(url_for("main.sources"))
+    key = found.playlist_id if is_playlist else found.channel_id
     db = get_db()
     with db:
         cur = db.execute(
             "INSERT INTO sources (label, campaign_id, collection_id, kind) VALUES (?, ?, '', 'youtube') "
-            "ON CONFLICT (campaign_id, collection_id) DO NOTHING", (f"YouTube: {channel.title}", channel.channel_id))
+            "ON CONFLICT (campaign_id, collection_id) DO NOTHING", (f"YouTube: {found.title}", key))
     if cur.rowcount:
-        flash(f"Added YouTube: {channel.title}. Now link it to its Pocket Casts podcast.", "ok")
+        flash(f"Added YouTube: {found.title}. Now link it to its Pocket Casts podcast.", "ok")
     else:
-        flash("That channel is already a source.", "warn")
+        flash(f"That {kind} is already a source.", "warn")
     return redirect(url_for("main.sources"))
 
 

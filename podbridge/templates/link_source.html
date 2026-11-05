@@ -6,7 +6,7 @@
 <section class="card">
   <p class="muted">
     Tick the Pocket Casts podcast{{ 's' if source.kind == 'youtube' else '' }} this
-    {{ 'channel' if source.kind == 'youtube' else 'source' }} feeds.
+    {{ ('channel' if source.campaign_id.startswith('UC') else 'playlist') if source.kind == 'youtube' else 'source' }} feeds.
     {% if source.kind == 'youtube' %}
       One channel can carry several shows (e.g. The News Agents and The News Agents USA). A video whose title ends in
       “| <em>Podcast name</em>” only matches within that podcast.

@@ -15,6 +15,9 @@ Usage (on the server, with the service's user and environment):
   sudo systemd-run --pipe --wait --collect -p User=podbridge -p EnvironmentFile=/etc/podbridge.env \
     -E DATABASE_PATH=/var/lib/podbridge/podbridge.db -p WorkingDirectory=/opt/podbridge \
     /opt/podbridge/.venv/bin/python scripts/probe_youtube.py @TheNewsAgents
+
+The argument can also be a playlist URL (quote it): it then lists every video, following
+the playlist's "load more" pages.
 """
 
 from __future__ import annotations
@@ -74,7 +77,18 @@ def main() -> None:
             continue
         print(f"  {d.title[:60]!r}: channel={d.channel_id} published={d.published_at} length={d.duration_secs}")
 
-    if len(sys.argv) > 1:
+    from podbridge.youtube import playlist_id_from
+
+    if len(sys.argv) > 1 and playlist_id_from(sys.argv[1]):
+        print("\n=== Playlist ===")
+        playlist = client.resolve_playlist(sys.argv[1])
+        print(f"  {sys.argv[1]} -> {playlist}")
+        if playlist:
+            videos = client.playlist_videos(playlist.playlist_id)
+            print(f"  videos listed: {len(videos)} (all pages), with a length: {sum(1 for v in videos if v.duration_secs)}")
+            for video in videos[:3] + (videos[-3:] if len(videos) > 6 else []):
+                print(f"    {video.duration_secs or 0:7.0f}s  {video.title[:70]}")
+    elif len(sys.argv) > 1:
         print("\n=== Channel ===")
         channel = client.resolve_channel(sys.argv[1])
         print(f"  {sys.argv[1]} -> {channel}")

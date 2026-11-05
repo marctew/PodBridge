@@ -13,7 +13,7 @@
           <td class="cell-title">{{ s.label }}</td>
           <td class="mono" data-label="Campaign / channel">{{ s.campaign_id }}</td>
           <td class="nowrap" data-label="Covers">
-            {% if s.kind == 'youtube' %}YouTube channel
+            {% if s.kind == 'youtube' %}YouTube {{ 'channel' if s.campaign_id.startswith('UC') else 'playlist' }}
             {% elif s.collection_id %}<span class="mono">Collection {{ s.collection_id }}</span>
               <form method="post" action="{{ url_for('main.widen_source_route', source_id=s.id) }}" class="inline-form">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -43,14 +43,14 @@
 </section>
 
 <section class="card">
-  <h2>Add a YouTube channel</h2>
+  <h2>Add a YouTube channel or playlist</h2>
   <form method="post" action="{{ url_for('main.add_youtube_source') }}" class="row">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="field grow">
-      <label for="channel">Channel handle or URL</label>
+      <label for="channel">Channel handle or URL, or playlist URL</label>
       <input id="channel" name="channel" type="text" placeholder="@TheNewsAgents" required>
     </div>
-    <button type="submit" class="secondary">Add channel</button>
+    <button type="submit" class="secondary">Add</button>
   </form>
   {% if missing_dates or backfill.running %}
   <form method="post" action="{{ url_for('main.fetch_youtube_dates') }}" class="row backfill">
