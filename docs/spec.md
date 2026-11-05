@@ -18,10 +18,9 @@ Success looks like: I watch 20 minutes of a bonus episode on Patreon, and within
 
 - Python 3.12, Flask, SQLite, APScheduler (in-process).
 - Server-rendered UI (Jinja + a little vanilla JS or htmx). No SPA build step.
-- Docker Compose on an Ubuntu 24.04 LXC (Proxmox). Single container, one volume for the SQLite file.
-- Add `dns: [1.1.1.1, 8.8.8.8]` to the service in `docker-compose.yml` (I've needed this on other LXC Docker apps).
+- Ubuntu 24.04 LXC (Proxmox). Built as one Docker container with a volume for the SQLite file; since 2026-11-04 it's a systemd service instead (gunicorn, one worker, data in `/var/lib/podbridge`), per `docs/design/APP-STANDARD.md`. See README.md for running it.
 - Listens on one HTTP port (pick something unused, e.g. 7330). It will sit behind my reverse proxy and is only reached over LAN/Tailscale. Do not assume public exposure, but do add a simple single-password login (password from env) so it isn't wide open.
-- Config via `.env`: `APP_PASSWORD`, `SECRET_KEY`, `ENCRYPTION_KEY`, `TZ=Europe/London`.
+- Config from the environment (`/etc/podbridge.env`): `APP_PASSWORD`, `SECRET_KEY`, `ENCRYPTION_KEY`, `TZ=Europe/London`.
 
 ## 3. Secrets handling
 

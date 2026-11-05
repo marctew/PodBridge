@@ -1,17 +1,20 @@
-"""Probe: does PodBridge's YouTube parsing work on your real history? READ-ONLY on YouTube.
+r"""Probe: does PodBridge's YouTube parsing work on your real history? READ-ONLY on YouTube.
 
-By default it uses PodBridge's own stored cookies (run it inside the container, where the
-database and ENCRYPTION_KEY are available) and saves any refreshed cookies back. Google
-rotates session cookies and invalidates the old values, so two clients using separate
-copies of one session knock each other out; sharing PodBridge's copy avoids that.
+By default it uses PodBridge's own stored cookies (run it on the server as the podbridge user,
+with the service's environment, so the database and ENCRYPTION_KEY are available) and saves
+any refreshed cookies back. Google rotates session cookies and invalidates the old values,
+so two clients using separate copies of one session knock each other out; sharing
+PodBridge's copy avoids that.
 
 Set YOUTUBE_COOKIES_FILE to use a cookies.txt export instead. Refreshed cookies are then
 NOT saved anywhere, so only do that with a session PodBridge isn't using.
 
 Prints titles, percentages and parse results, never cookie values.
 
-Usage (inside the container):
-  docker compose exec podbridge python scripts/probe_youtube.py @TheNewsAgents
+Usage (on the server, with the service's user and environment):
+  sudo systemd-run --pipe --wait --collect -p User=podbridge -p EnvironmentFile=/etc/podbridge.env \
+    -E DATABASE_PATH=/var/lib/podbridge/podbridge.db -p WorkingDirectory=/opt/podbridge \
+    /opt/podbridge/.venv/bin/python scripts/probe_youtube.py @TheNewsAgents
 """
 
 from __future__ import annotations

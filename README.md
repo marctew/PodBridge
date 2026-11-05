@@ -202,5 +202,5 @@ python -m venv .venv
 | Script | Purpose |
 |---|---|
 | `scripts/probe_*.py` | Read-only checks against the real services (see `docs/phase0-findings.md`). |
-| `scripts/probe_youtube.py` | Run inside the container to test YouTube parsing with PodBridge's stored login. |
+| `scripts/probe_youtube.py` | Tests YouTube parsing with PodBridge's stored login. Run it on the server as the service's user; the command is in the script. |
 | `scripts/make_icons.py` | Regenerates the app icons (needs Pillow). |
