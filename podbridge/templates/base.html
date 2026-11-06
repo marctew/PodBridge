@@ -27,6 +27,7 @@
   <link rel="apple-touch-icon" href="{{ url_for('static', filename='icons/apple-touch-icon.png') }}">
   <link rel="manifest" href="{{ url_for('static', filename='manifest.webmanifest') }}">
   <script src="{{ url_for('static', filename='design/confirm.js', v=asset_version) }}" defer></script>
+  <script src="{{ url_for('static', filename='design/scroll-fade.js', v=asset_version) }}" defer></script>
 </head>
 <body class="{{ 'signed-in' if session.auth else 'signed-out' }}">
 {% macro problem_banners() %}

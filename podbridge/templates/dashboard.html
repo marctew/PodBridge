@@ -14,7 +14,7 @@
        title="Bookmark this to jump straight to the latest episode">Latest ↗</a>{% endif %}
   </div>
   {% if watching %}
-    <div class="shelf-row">
+    <div class="shelf-row scroll-fade">
       {% for e in watching %}
         {{ episode_card(e, (e.resume.position_secs | hms) ~ ' of ' ~ (e.duration_secs | hms) ~ ' · ' ~ e.show_title) }}
       {% endfor %}
@@ -30,7 +30,7 @@
     <h2>My List</h2>
     <a class="muted" href="{{ url_for('main.list_page') }}">Edit list →</a>
   </div>
-  <div class="shelf-row">
+  <div class="shelf-row scroll-fade">
     {% for e in my_list %}
       {{ episode_card(e, e.show_title ~ ' · ' ~ ('Played' if e.state == 'played' else ((e.resume.position_secs | hms) ~ ' of ' ~ (e.duration_secs | hms)) if e.state == 'in_progress' else (e.published_at | localtime(date_only=True)))) }}
     {% endfor %}
@@ -43,7 +43,7 @@
   <div class="shelf-head">
     <h2>New this week</h2>
   </div>
-  <div class="shelf-row">
+  <div class="shelf-row scroll-fade">
     {% for e in new_week %}
       {{ episode_card(e, e.show_title ~ ' · ' ~ (e.published_at | localtime(date_only=True))) }}
     {% endfor %}
@@ -56,7 +56,7 @@
   <div class="shelf-head">
     <h2>Up next</h2>
   </div>
-  <div class="shelf-row">
+  <div class="shelf-row scroll-fade">
     {% for e in up_next %}
       {{ episode_card(e, e.show_title ~ ' · ' ~ (e.published_at | localtime(date_only=True))) }}
     {% endfor %}
@@ -71,7 +71,7 @@
     <span class="shelf-links"><a class="muted" href="{{ url_for('main.history_page') }}">History</a>
       · <a class="muted" href="{{ url_for('main.stats_page') }}">Stats →</a></span>
   </div>
-  <div class="shelf-row">
+  <div class="shelf-row scroll-fade">
     {% for e in recently_watched %}
       {{ episode_card(e, e.show_title ~ ' · ' ~ ('Played' if e.state == 'played' else ((e.resume.position_secs | hms) ~ ' of ' ~ (e.duration_secs | hms)) if e.resume else '')) }}
     {% endfor %}
@@ -85,7 +85,7 @@
     <h2>Recently added</h2>
     <a class="muted" href="{{ url_for('main.library_page') }}">Library →</a>
   </div>
-  <div class="shelf-row">
+  <div class="shelf-row scroll-fade">
     {% for e in recent %}
       {{ episode_card(e, e.show_title ~ ' · ' ~ (e.published_at | localtime(date_only=True))) }}
     {% endfor %}
