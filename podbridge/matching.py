@@ -180,14 +180,18 @@ def route_by_suffix(title: str, podcast_titles: dict[str, str | None]) -> str | 
 
 def match_episodes_loose(
     source: list[PatreonSide], pocket: list[PocketSide], taken: set[str] = frozenset(),
-    podcast_titles: dict[str, str | None] | None = None,
+    podcast_titles: dict[str, str | None] | None = None, reclaimable: set[str] = frozenset(),
 ) -> dict[int, tuple[str, str]]:
     """For YouTube sources, where video titles and lengths differ from the podcast's.
 
+    `reclaimable` are Pocket Casts episodes held by another video's Fuzzy match: an exact title
+    (step 1) may take them back; the fuzzier steps may not.
+
     0. If the source feeds several podcasts and a video's '| suffix' names one of them,
        only that podcast's episodes are candidates.
-    1. Exact normalised title (unique), ignoring the '| Channel Name' suffix and a short
-       'Label:' prefix on either side ('Q&A:', 'Special episode:').
+    1. Exact normalised title (unique), ignoring a '| Channel Name' suffix and a short
+       'Label:' prefix on either side ('Q&A:', 'Special episode:'). Date and length don't
+       matter here: an identical title is the same episode, even weeks apart or re-cut.
     2. If the video's publish date is known: Pocket Casts episodes published within 30 hours.
        A single one wins if its length is close (25%) or its title is similar (>= 0.45);
        several are separated by title similarity (best >= 0.45 and 0.15 clear of the next).
@@ -198,7 +202,7 @@ def match_episodes_loose(
        video's length (best >= 0.45 and 0.2 clear of the next).
     Contested Pocket Casts episodes go to nobody.
     """
-    available = [p for p in pocket if p.uuid not in taken]
+    available = [p for p in pocket if p.uuid not in taken or p.uuid in reclaimable]
     routes = {ep.episode_id: route_by_suffix(ep.title, podcast_titles or {}) for ep in source}
 
     def allowed(ep: PatreonSide, candidates: list[PocketSide]) -> list[PocketSide]:
@@ -207,10 +211,12 @@ def match_episodes_loose(
 
     by_title: dict[str, list[PocketSide]] = defaultdict(list)
     for p in available:
-        for variant in {normalise_title(v) for v in title_variants(p.title)}:
+        # Some podcasts end their titles in "| Show #123" just like the videos do.
+        names = title_variants(p.title) | title_variants(strip_channel_suffix(p.title))
+        for variant in {normalise_title(v) for v in names}:
             by_title[variant].append(p)
 
-    # YouTube titles usually end in " | Channel Name"; podcast titles don't.
+    # YouTube titles usually end in " | Channel Name"; most podcast titles don't.
     source = [PatreonSide(ep.episode_id, strip_channel_suffix(ep.title), ep.published_at, ep.duration_secs)
               for ep in source]
     title_matches: dict[int, tuple[str, str]] = {}
@@ -225,7 +231,7 @@ def match_episodes_loose(
     title_matches = _uncontested(title_matches)
 
     claimed = {uuid for uuid, _ in title_matches.values()}
-    remaining = [p for p in available if p.uuid not in claimed]
+    remaining = [p for p in available if p.uuid not in claimed and p.uuid not in reclaimable]
     date_matches: dict[int, tuple[str, str]] = {}
     for ep in rest:
         when = _parse_time(ep.published_at)

@@ -112,3 +112,67 @@ def test_shorts_are_not_listed_and_unmatched_ones_are_removed(yt_env):  # noqa: 
     ids = {r[0] for r in conn.execute("SELECT patreon_post_id FROM episodes")}
     assert ids == {"FullEpisod1", "NoLength001", "Trailer0001"}
     assert result.added == 2
+
+
+# --- exact titles: suffix on both sides, any date or length, and they win back Fuzzy matches ---
+
+def test_exact_title_with_suffix_on_both_sides_ignores_date_and_length():
+    ep = video("South African Female Boxer Saarah Karriem | Storytime #096", "2026-10-01T12:00:00Z", 2450)
+    pocket = [pod("saarah", "South African Female Boxer Saarah Karriem | Storytime #096", "2025-10-28T12:00:00Z", 3970)]
+    assert match_episodes_loose([ep], pocket) == {1: ("saarah", "auto_title")}
+
+
+def test_exact_title_can_reclaim_but_fuzzy_steps_cannot():
+    ep = video("How To Play Lawn Bowls | StoryTime with Friends #009")
+    held = pod("p9", "How To Play Lawn Bowls | StoryTime with Friends #009")
+    assert match_episodes_loose([ep], [held], taken={"p9"}) == {}
+    assert match_episodes_loose([ep], [held], taken={"p9"}, reclaimable={"p9"}) == {1: ("p9", "auto_title")}
+    other = video("Something retitled entirely", ep_id=2)
+    assert match_episodes_loose([other], [held], taken={"p9"}, reclaimable={"p9"}) == {}
+
+
+def _storytime(conn):
+    from podbridge.linking import link_source
+    with conn:
+        conn.execute("INSERT INTO sources (label, campaign_id, collection_id, kind) "
+                     "VALUES ('YouTube: Storytime', 'PLstorytime0000000', '', 'youtube')")
+    sid = conn.execute("SELECT id FROM sources WHERE campaign_id = 'PLstorytime0000000'").fetchone()[0]
+    link_source(conn, sid, "pc-story")
+    with conn:
+        for uuid, title, when in [("p9", "How To Play Lawn Bowls | StoryTime with Friends #009", "2026-10-06T10:00:00Z"),
+                                  ("p10", "How To Braai Afrikaans | StoryTime with Friends #010", "2026-10-12T10:00:00Z")]:
+            conn.execute("INSERT INTO pocketcasts_episodes (uuid, podcast_uuid, title, published_at, duration_secs, "
+                         "fetched_at) VALUES (?, 'pc-story', ?, ?, 2550, ?)", (uuid, title, when, when))
+        # The #010 video went up the day #009's episode came out, so the old rules paired them.
+        for post, title, when, uuid, method in [
+                ("Video009000", "How To Play Lawn Bowls | StoryTime with Friends #009", "2026-09-29T10:00:00Z", None, "none"),
+                ("Video010000", "How To Braai Afrikaans | StoryTime with Friends #010", "2026-10-06T12:00:00Z", "p9", "auto_date")]:
+            conn.execute("INSERT INTO episodes (source_id, patreon_post_id, title, published_at, duration_secs, "
+                         "pocketcasts_episode_uuid, match_method) VALUES (?, ?, ?, ?, 2550, ?, ?)",
+                         (sid, post, title, when, uuid, method))
+    return sid
+
+
+def test_auto_match_moves_a_fuzzy_holder_to_its_own_episode(yt_env):  # noqa: F811
+    from podbridge.linking import auto_match_source
+    conn, _ = yt_env
+    sid = _storytime(conn)
+    source = conn.execute("SELECT * FROM sources WHERE id = ?", (sid,)).fetchone()
+    with conn:
+        assert auto_match_source(conn, source) == 2
+    rows = dict(conn.execute("SELECT patreon_post_id, pocketcasts_episode_uuid || ':' || match_method FROM episodes "
+                             "WHERE source_id = ?", (sid,)).fetchall())
+    assert rows == {"Video009000": "p9:auto_title", "Video010000": "p10:auto_title"}
+
+
+def test_manual_matches_are_never_reclaimed(yt_env):  # noqa: F811
+    from podbridge.linking import auto_match_source
+    conn, _ = yt_env
+    sid = _storytime(conn)
+    with conn:
+        conn.execute("UPDATE episodes SET match_method = 'manual' WHERE patreon_post_id = 'Video010000'")
+    with conn:
+        auto_match_source(conn, conn.execute("SELECT * FROM sources WHERE id = ?", (sid,)).fetchone())
+    rows = dict(conn.execute("SELECT patreon_post_id, pocketcasts_episode_uuid FROM episodes WHERE source_id = ?",
+                             (sid,)).fetchall())
+    assert rows == {"Video009000": None, "Video010000": "p9"}
