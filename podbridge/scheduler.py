@@ -132,6 +132,11 @@ def init_scheduler(app: Flask) -> None:
     scheduler = BackgroundScheduler(timezone="UTC")
     scheduler.add_job(_scheduled_job, IntervalTrigger(minutes=minutes), args=[app], id=JOB_ID,
                       max_instances=1, coalesce=True, misfire_grace_time=300)
+    from .api.web import housekeeping, prune_images
+    scheduler.add_job(housekeeping, IntervalTrigger(seconds=60), args=[app], id="api-housekeeping",
+                      max_instances=1, coalesce=True)
+    scheduler.add_job(prune_images, IntervalTrigger(hours=24), args=[app], id="api-image-prune",
+                      max_instances=1, coalesce=True)
     scheduler.start()
     app.extensions["scheduler"] = scheduler
     atexit.register(lambda: scheduler.running and scheduler.shutdown(wait=False))

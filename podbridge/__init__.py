@@ -43,7 +43,7 @@ def create_app(config: Config | None = None) -> Flask:
     # especially) fetch the new file after every update instead of reusing a stale copy.
     # The design files count too: the design updater changes them without touching style.css.
     digest = hashlib.sha1()
-    for name in ("style.css", "design/uniform.css", "design/confirm.js"):
+    for name in ("style.css", "display.css", "design/uniform.css", "design/confirm.js"):
         asset = Path(app.static_folder) / name
         if asset.is_file():
             digest.update(asset.read_bytes())
@@ -80,6 +80,8 @@ def create_app(config: Config | None = None) -> Flask:
     db.init_app(app)
     auth.init_app(app)
     app.register_blueprint(views.bp)
+    from .api import web as api_web  # the outside API (docs/API.md), on Design Uniformity's du_api
+    api_web.install(app)
     try:  # the Design system card in Settings; du_flask.py is copied in by the design updater
         from .du_flask import init_design
         init_design(app, config.database_path.parent / "design", version=__version__)

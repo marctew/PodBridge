@@ -11,7 +11,8 @@ Environment=PYTHONUNBUFFERED=1
 EnvironmentFile=/etc/podbridge.env
 WorkingDirectory=/opt/podbridge
 # One worker: the sync scheduler runs in-process and must exist exactly once.
-ExecStart=/opt/podbridge/.venv/bin/gunicorn --bind 0.0.0.0:7330 --workers 1 --threads 4 --timeout 120 --graceful-timeout 30 --access-logfile - --access-logformat '%%(h)s %%(t)s "%%(m)s %%(U)s %%(H)s" %%(s)s %%(b)s "%%(a)s"' wsgi:app
+# 12 threads: up to 8 API event streams (docs/API.md) each hold one, and pages need the rest.
+ExecStart=/opt/podbridge/.venv/bin/gunicorn --bind 0.0.0.0:7330 --workers 1 --threads 12 --timeout 120 --graceful-timeout 30 --access-logfile - --access-logformat '%%(h)s %%(t)s "%%(m)s %%(U)s %%(H)s" %%(s)s %%(b)s "%%(a)s"' wsgi:app
 Restart=on-failure
 RestartSec=3
 

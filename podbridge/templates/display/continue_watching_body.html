@@ -1,0 +1,25 @@
+<div class="pbd pbd-{{ opts.size }}">
+  <header class="pbd-head">
+    <h1 class="pbd-title">Continue watching</h1>
+    <span class="pbd-app">PodBridge</span>
+  </header>
+  {% if page["items"] %}
+  <ul class="pbd-grid" role="list">
+    {% for it in page["items"] %}
+    <li class="pbd-tile">
+      <div class="pbd-art">
+        {% if it.image %}<img src="{{ page.img(it.image) }}" alt="" loading="lazy" onerror="this.remove()">{% endif %}
+        <div class="pbd-bar"><span style="width: {{ it.meta.progress_pct | default(0) }}%"></span></div>
+      </div>
+      <div class="pbd-name">{{ it.title }}</div>
+      <div class="pbd-sub">{{ it.subtitle }}</div>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <div class="pbd-empty">
+    <p class="pbd-empty-title">Nothing in progress</p>
+    <p class="pbd-empty-text">Start an episode on Patreon or YouTube and it shows up here.</p>
+  </div>
+  {% endif %}
+</div>

@@ -27,6 +27,7 @@ from .discovery import (
 )
 from .hide_rules import apply_rules
 from .http import TransportError
+from .api import events as api_events
 from .linking import apply_pocketcasts_state, refresh_all
 from .patreon import PatreonClient, PatreonError, PatreonSessionExpired
 from .pocketcasts import PocketCastsClient, PocketCastsError
@@ -123,6 +124,7 @@ def _run(conn, store, patreon, youtube, pocketcasts, tier, unavailable, art_dir,
         # "unchanged since last decision" rule skips, so processing is still safe.
         refresh_all(conn, store, pocketcasts)
         apply_rules(conn)  # auto-hide before deciding, so hidden junk isn't synced
+        api_events.announce_new_episodes(conn)
         _process(conn, run_id, pocketcasts, dry_run, summary)
     except (PocketCastsError, TransportError, SecretError) as exc:
         failures.append(("error", f"Pocket Casts: {type(exc).__name__}: {exc}"))
@@ -142,6 +144,7 @@ def _run(conn, store, patreon, youtube, pocketcasts, tier, unavailable, art_dir,
         )
     log.info("Sync run %s (%s%s): %s, %s checked, %s updated", run_id, tier, ", dry run" if dry_run else "",
              summary.status, summary.checked, summary.updated)
+    api_events.sync_done(conn, run_id, summary.status, summary.checked, summary.updated, summary.error, dry_run)
     return summary
 
 
@@ -226,6 +229,8 @@ def _process(conn, run_id: int, pocketcasts: PocketCastsClient, dry_run: bool, s
             if not (writes and dry_run):
                 # A dry-run "would write" stays pending so a real run still acts on it.
                 _mark_decided(conn, episode_id, row["patreon_updated_at"])
+        if writes and not dry_run:
+            api_events.progress_synced(conn, episode_id, decision.action, decision.position)
 
 
 # --- one episode, on demand ---
