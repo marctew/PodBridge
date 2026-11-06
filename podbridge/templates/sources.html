@@ -6,27 +6,31 @@
 <section class="card table-card">
   <div class="table-wrap">
     <table class="stack">
-      <thead><tr><th>Label</th><th>Campaign / channel</th><th>Covers</th><th class="num">Episodes</th><th class="num">Matched</th><th>Pocket Casts podcast</th><th></th></tr></thead>
+      <thead><tr><th>Source</th><th class="num">Episodes</th><th class="num">Matched</th><th>Pocket Casts podcast</th><th></th></tr></thead>
       <tbody>
       {% for s in sources %}
         <tr {% if not s.enabled %}class="disabled"{% endif %}>
-          <td class="cell-title">{{ s.label }}</td>
-          <td class="mono" data-label="Campaign / channel">{{ s.campaign_id }}</td>
-          <td class="nowrap" data-label="Covers">
-            {% if s.kind == 'youtube' %}YouTube {{ 'channel' if s.campaign_id.startswith('UC') else 'playlist' }}
-            {% elif s.collection_id %}<span class="mono">Collection {{ s.collection_id }}</span>
+          <td class="cell-title">
+            {{ s.label }}
+            <div class="source-sub">
+              {% if s.kind == 'youtube' %}YouTube {{ 'channel' if s.campaign_id.startswith('UC') else 'playlist' }}
+              {% elif s.collection_id %}Collection <span class="mono">{{ s.collection_id }}</span>
+              {% else %}All posts{% endif %}
+              <span class="mono source-id">{{ s.campaign_id }}</span>
+            </div>
+            {% if s.kind != 'youtube' and s.collection_id %}
               <form method="post" action="{{ url_for('main.widen_source_route', source_id=s.id) }}" class="inline-form">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <button type="submit" class="link accent" title="Include every post in this campaign, keeping existing matches">Widen to all posts</button>
               </form>
-            {% else %}All posts{% endif %}
+            {% endif %}
           </td>
           <td class="num" data-label="Episodes">{{ s.episode_count }}</td>
           <td class="num" data-label="Matched">{{ s.matched_count }}</td>
-          <td class="nowrap wrap-mobile" data-label="Pocket Casts">
-            {% if s.pocketcasts_podcast_uuid %}{{ s.podcast_names or 'Linked' }} ·
+          <td class="cell-podcast" data-label="Pocket Casts">
+            <span>{% if s.pocketcasts_podcast_uuid %}{{ s.podcast_names or 'Linked' }} ·
               <a href="{{ url_for('main.link_source_form', source_id=s.id) }}">Change</a>
-            {% else %}<a href="{{ url_for('main.link_source_form', source_id=s.id) }}">Link podcast</a>{% endif %}
+            {% else %}<a href="{{ url_for('main.link_source_form', source_id=s.id) }}">Link podcast</a>{% endif %}</span>
           </td>
           <td class="cell-actions">
             <a href="{{ url_for('main.source_rules', source_id=s.id) }}" class="rules-link">Hide rules{% if s.rule_count %} ({{ s.rule_count }}){% endif %}</a>
