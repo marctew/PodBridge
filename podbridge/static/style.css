@@ -264,6 +264,15 @@ img.art.fallback { object-fit: contain; }
 .rule-list li > span:first-child { flex: 1; min-width: 12rem; }
 .rule-list form { margin: 0; }
 .rules-link { display: inline-block; margin-right: .75rem; white-space: nowrap; }
+/* Sources table: kind and ID sit under the label, so the table fits without scrolling. */
+.source-sub { margin-top: .15rem; color: rgb(var(--muted)); font-size: .8rem; font-weight: 400; }
+.source-id { display: block; font-size: .75rem; overflow-wrap: anywhere; }
+@media (max-width: 640px) { td.cell-podcast > span { text-align: right; } }
+@media (min-width: 641px) {
+  td.cell-podcast { min-width: 10rem; }
+  table.stack td.cell-title { min-width: 13rem; }
+  table.stack td.cell-actions .rules-link { display: block; margin: 0 0 .15rem; }
+}
 input[type=file] { color: rgb(var(--muted)); font: inherit; max-width: 100%; }
 .restore-form { margin-top: 1rem; padding-top: 1rem; border-top: 1px solid rgb(var(--border)); }
 
