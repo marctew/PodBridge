@@ -66,7 +66,11 @@ class SettingsStore:
     def set(self, key: str, value: str) -> None:
         if key in SECRET_KEYS:
             raise KeyError(f"{key} is secret; use set_secret()")
+        newly_expired = key.endswith("_status") and value == "expired" and self.get(key) != "expired"
         self._upsert(key, value, is_secret=False)
+        if newly_expired:  # the API's login.expired event (api/events.py)
+            from .api import events
+            events.login_expired(self._conn, key.removesuffix("_status"))
 
     def get_secret(self, key: str) -> str | None:
         if key not in SECRET_KEYS:

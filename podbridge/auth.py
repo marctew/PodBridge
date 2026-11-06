@@ -56,6 +56,10 @@ def _recent_failures(ip: str) -> deque[float]:
 
 
 def _require_login():
+    # /api/v1/ and /display/ have their own gate (du_api: tokens, or the signed-in session with
+    # X-CSRF-Token for writes), so the login redirect and the form CSRF check step aside for them.
+    if request.path.startswith(("/api/v1/", "/display/")):
+        return None
     if request.method == "POST":
         _check_csrf()
     if request.endpoint in PUBLIC_ENDPOINTS or session.get("auth"):

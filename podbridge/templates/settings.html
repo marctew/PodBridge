@@ -113,6 +113,11 @@
   </form>
 </section>
 
+{% if api_urls is defined %}
+<div class="design-settings">{% include "partials/api_tokens_card.html" %}</div>
+<div class="design-settings">{% include "partials/webhooks_card.html" %}</div>
+{% endif %}
+
 {% if design_status is defined %}
 <div class="design-settings">{% include "partials/design_card.html" %}</div>
 <script src="{{ url_for('static', filename='design/design-card.js', v=asset_version) }}" defer></script>

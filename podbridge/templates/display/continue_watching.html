@@ -1,0 +1,4 @@
+{% extends "display/base.html" %}
+{#- Continue watching, for kiosks and the widget display (API standard section 9). The body is
+    continue_watching_body.html, which ?fragment=1 returns alone. -#}
+{% block body %}{% include "display/continue_watching_body.html" %}{% endblock %}

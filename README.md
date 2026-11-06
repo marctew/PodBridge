@@ -135,6 +135,7 @@ Your normal email and password. PodBridge keeps a refresh token, so it doesn't l
 - **Activity:** every sync run, and what it did to each episode.
 - **History:** day by day, what you watched or listened to, and how far.
 - **`/go/latest`:** bookmark it, or use it from an iOS Shortcut. It opens the most recently touched in-progress episode at the right point.
+- **API** (for Home Assistant, Docket, Vital Signs and displays): make a token in **Settings → API tokens**. Status, feeds (Continue watching, new episodes, Up next, My List, history, syncs), actions (sync now, mark played or unplayed, My List), live events, webhooks and a Continue watching display page. See [docs/API.md](docs/API.md).
 
 ## Updating
 

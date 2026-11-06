@@ -665,9 +665,15 @@ def settings():
             run_youtube_test(store)
         return redirect(url_for("main.settings"))
 
+    from .api.web import card_context
+    return render_template("settings.html", **settings_page_context(), **card_context())
+
+
+def settings_page_context() -> dict:
+    """Settings' own cards (the API tokens and Webhooks cards add theirs: api/web.py)."""
+    store = get_store()
     secrets_state = {key: store.updated_at(key) for key in SECRET_FIELDS}
-    return render_template(
-        "settings.html",
+    return dict(
         secrets_state=secrets_state,
         patreon=connection_status(store, "patreon"),
         pocketcasts=connection_status(store, "pocketcasts"),
@@ -828,6 +834,9 @@ def refresh_episodes():
                 flash(f"YouTube · {r.label}: {r.posts_seen} videos listed, {r.added} new", "ok")
         except YOUTUBE_FAILURES as exc:
             flash(youtube_failure(store, exc), "error")
+
+    from .api import events as api_events
+    api_events.announce_new_episodes(db)
 
     linked = db.execute("SELECT COUNT(*) FROM sources WHERE enabled = 1 "
                         "AND pocketcasts_podcast_uuid IS NOT NULL").fetchone()[0]
