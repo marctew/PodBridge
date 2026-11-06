@@ -25,7 +25,7 @@ screens = Blueprint("display", __name__, url_prefix="/display")
 cards = Blueprint("api_cards", __name__, url_prefix="/settings")
 
 API_PREFIXES = ("/api/v1/", "/display/")
-ICON = "/static/icons/icon-192.png"
+ICON = "/static/icon-192.png"
 
 
 def _base() -> str:

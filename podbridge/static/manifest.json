@@ -1,0 +1,16 @@
+{
+  "name": "PodBridge",
+  "short_name": "PodBridge",
+  "description": "Patreon and YouTube progress, synced into Pocket Casts",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#090b11",
+  "theme_color": "#090b11",
+  "icons": [
+    { "src": "/static/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/static/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "/static/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

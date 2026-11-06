@@ -204,4 +204,4 @@ python -m venv .venv
 |---|---|
 | `scripts/probe_*.py` | Read-only checks against the real services (see `docs/phase0-findings.md`). |
 | `scripts/probe_youtube.py` | Tests YouTube parsing with PodBridge's stored login. Run it on the server as the service's user; the command is in the script. |
-| `scripts/make_icons.py` | Regenerates the app icons (needs Pillow). |
+| `tools/make_icons.py` | Regenerates the home screen icons and `favicon.ico` from `podbridge/static/brand/logo.svg`: `python tools/make_icons.py podbridge/static` (needs cairosvg and Pillow; Design Uniformity PWA-ICONS.md). |

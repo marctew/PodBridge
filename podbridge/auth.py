@@ -17,7 +17,7 @@ from flask import (
 
 bp = Blueprint("auth", __name__)
 
-PUBLIC_ENDPOINTS = frozenset({"auth.login", "main.healthz", "static"})
+PUBLIC_ENDPOINTS = frozenset({"auth.login", "main.healthz", "static", "main.old_icon"})
 MAX_FAILURES = 10
 FAILURE_WINDOW_SECS = 15 * 60
 

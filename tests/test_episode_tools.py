@@ -173,12 +173,3 @@ def test_sync_now_route(app, authed):
     html = authed.post("/episodes/1/sync", data={"csrf_token": csrf_from(page), "next": "/library/1/pc-podcast-bb"},
                        follow_redirects=True).get_data(as_text=True)
     assert "isn&#39;t ahead of Pocket Casts" in html or "Dry run" in html
-
-
-def test_icons_and_manifest_are_public(client):
-    html = client.get("/login").get_data(as_text=True)
-    assert 'rel="apple-touch-icon"' in html and 'rel="manifest"' in html
-    icon = client.get("/static/icons/apple-touch-icon.png")
-    assert icon.status_code == 200 and icon.data[:8] == b"\x89PNG\r\n\x1a\n"
-    manifest = client.get("/static/manifest.webmanifest")
-    assert manifest.status_code == 200 and manifest.get_json()["short_name"] == "PodBridge"

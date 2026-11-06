@@ -1161,7 +1161,7 @@ def about():
     about = {
         "tagline": "Patreon and YouTube playback progress, synced into Pocket Casts",
         "github": "https://github.com/marctew/PodBridge",
-        "name": ("Pod", "Bridge"), "icon": url_for("static", filename="icons/icon.svg"),
+        "name": ("Pod", "Bridge"), "icon": url_for("static", filename="img/icon.svg"),
         "facts": [("Server", server),
                   ("Scheduler", f"every {store.get_int('sync_interval_minutes')} minutes" if scheduler_running() else "off"),
                   ("Dry run", "on" if store.get_bool("dry_run") else "off")],
@@ -1197,3 +1197,28 @@ def healthz():
             if on]
     return jsonify(ok=True, busy=busy, status="ok", patreon_session_valid=valid("patreon"),
                    pocketcasts_session_valid=valid("pocketcasts"), youtube_session_valid=valid("youtube"))
+
+
+# Home screen icons (Design Uniformity PWA-ICONS.md). The icons used to live in static/icons/ and the manifest
+# was manifest.webmanifest; phones that added PodBridge before then still ask for those, so they redirect.
+# Public, like /static/ itself (auth.PUBLIC_ENDPOINTS).
+OLD_ICON_URLS = {
+    "/favicon.ico": "favicon.ico",
+    "/static/manifest.webmanifest": "manifest.json",
+    "/static/icons/icon.svg": "img/icon.svg",
+    "/static/icons/favicon-32.png": "favicon.ico",
+    "/static/icons/apple-touch-icon.png": "apple-touch-icon.png",
+    "/static/icons/icon-192.png": "icon-192.png",
+    "/static/icons/icon-512.png": "icon-512.png",
+    "/static/icons/icon-maskable-512.png": "icon-512.png",
+}
+
+
+@bp.get("/favicon.ico", endpoint="old_icon")
+@bp.get("/static/manifest.webmanifest", endpoint="old_icon")
+@bp.get("/static/icons/<path:name>", endpoint="old_icon")
+def old_icon(name: str | None = None):
+    target = OLD_ICON_URLS.get(request.path)
+    if not target:
+        abort(404)
+    return redirect(url_for("static", filename=target), 301)
