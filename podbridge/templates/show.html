@@ -42,7 +42,7 @@
 {% endif %}
 
 <div class="tabs-row">
-  <nav class="tabs" aria-label="Filter">
+  <nav class="tabs scroll-fade" aria-label="Filter">
     {% for f in filters %}
       <a href="{{ url_for('main.show_page', source_id=show.source_id, slug=show.slug, filter=f) }}"
          {% if f == current %}aria-current="page"{% endif %}>{{ f.replace('_', ' ') | capitalize }}{% if f == 'hidden' and show.hidden_episodes %} ({{ show.hidden_episodes | length }}){% endif %}</a>

@@ -9,7 +9,7 @@
   </form>
 </div>
 
-<nav class="tabs" aria-label="Filter">
+<nav class="tabs scroll-fade" aria-label="Filter">
   {% for f in filters %}
     <a href="{{ url_for('main.episodes', filter=f) }}" {% if f == current %}aria-current="page"{% endif %}>{{ f.replace('_', ' ') | capitalize }}</a>
   {% endfor %}
@@ -24,7 +24,7 @@
       <p class="muted">Not linked to a Pocket Casts podcast. <a href="{{ url_for('main.link_source_form', source_id=source.id) }}">Link it</a>.</p>
     {% endif %}
     {% if rows %}
-    <div class="table-wrap">
+    <div class="table-wrap scroll-fade">
       <table class="stack">
         <thead>
           <tr><th>Title</th><th>Published</th><th class="num">Length</th><th>{{ 'YouTube' if source.kind == 'youtube' else 'Patreon' }}</th><th>Pocket Casts</th><th>Match</th></tr>
