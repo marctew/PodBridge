@@ -37,6 +37,13 @@ def test_the_only_episode_that_day_still_matches_on_length_or_title():
         1: ("p", "auto_date")}
 
 
+def test_a_rival_ruled_out_by_length_still_blocks_a_weak_title():
+    ep = video("Did Jesus Exist? The Truth Historians Can't Ignore", secs=1440.0)
+    pocket = [pod("deepwater", "ShortHand: The Deepwater Horizon Oil Spill", secs=1360),
+              pod("long", "Episode 400: Something else entirely", secs=5400)]
+    assert match_episodes_loose([ep], pocket) == {}
+
+
 def test_strong_title_matches_across_days():
     ep = video("Lewis Moody On Preparing His Family for The End & Choosing To Live", "2026-10-28T12:00:00Z", 4920)
     pocket = [pod("moody", "Lewis Moody: Preparing His Family for The End & Choosing To Live (E446)",

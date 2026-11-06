@@ -188,10 +188,10 @@ def match_episodes_loose(
        only that podcast's episodes are candidates.
     1. Exact normalised title (unique), ignoring the '| Channel Name' suffix and a short
        'Label:' prefix on either side ('Q&A:', 'Special episode:').
-    2. If the video's publish date is known: Pocket Casts episodes published within 30 hours
-       whose length is plausible (lengths_plausible). A single one wins if its length is
-       known to be close or its title is similar (>= 0.45); several are separated by title
-       similarity (best >= 0.45 and 0.15 clear of the next).
+    2. If the video's publish date is known: Pocket Casts episodes published within 30 hours.
+       A single one wins if its length is close (25%) or its title is similar (>= 0.45);
+       several are separated by title similarity (best >= 0.45 and 0.15 clear of the next).
+       Either way the winner's length must be plausible (not a clip against an episode).
     3. Still nothing: a strong title match (>= 0.7, 0.2 clear of the next) within 21 days, for
        shows that post the video days before or after the podcast.
     4. If the date isn't known yet: title similarity alone among episodes within 10% of the
@@ -234,19 +234,20 @@ def match_episodes_loose(
             if match is not None:
                 date_matches[ep.episode_id] = (match.uuid, "auto_date")
             continue
-        candidates = [p for p in allowed(ep, remaining) if lengths_plausible(ep.duration_secs, p.duration_secs)]
-        near = [p for p in candidates
+        near = [p for p in allowed(ep, remaining)
                 if (t := _parse_time(p.published_at)) is not None and abs(t - when) <= LOOSE_DATE_TOLERANCE]
+        # Rivals count even when their length rules them out: a weak title only wins on date when
+        # nothing else came out then, not because the length check removed the competition.
         if len(near) == 1:
-            if lengths_close(ep.duration_secs, near[0].duration_secs) or \
-                    title_similarity(ep.title, near[0].title) >= MIN_TITLE_SIMILARITY:
-                date_matches[ep.episode_id] = (near[0].uuid, "auto_date")
-                continue
-        elif near:
+            lone = near[0]
+            match = lone if (lengths_close(ep.duration_secs, lone.duration_secs)
+                             or title_similarity(ep.title, lone.title) >= MIN_TITLE_SIMILARITY) else None
+        else:
             match = _clear_winner(ep, near, MIN_TITLE_SIMILARITY, MIN_SIMILARITY_MARGIN)
-            if match is not None:
-                date_matches[ep.episode_id] = (match.uuid, "auto_date")
-                continue
+        if match is not None and lengths_plausible(ep.duration_secs, match.duration_secs):
+            date_matches[ep.episode_id] = (match.uuid, "auto_date")
+            continue
+        candidates = [p for p in allowed(ep, remaining) if lengths_plausible(ep.duration_secs, p.duration_secs)]
         wide = [p for p in candidates
                 if (t := _parse_time(p.published_at)) is not None and abs(t - when) <= STRONG_DATE_TOLERANCE]
         match = _clear_winner(ep, wide, STRONG_TITLE_SIMILARITY, NO_DATE_SIMILARITY_MARGIN)
