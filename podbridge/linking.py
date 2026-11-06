@@ -143,8 +143,8 @@ def revalidate_fuzzy_matches(conn: sqlite3.Connection, source_id: int) -> int:
     return dropped
 
 
-def auto_match_source(conn: sqlite3.Connection, source: sqlite3.Row) -> int:
-    if source["kind"] == "youtube":
+def auto_match_source(conn: sqlite3.Connection, source: sqlite3.Row, _reclaim: bool = True) -> int:
+    if source["kind"] == "youtube" and _reclaim:
         revalidate_fuzzy_matches(conn, source["id"])
     podcasts = source_podcasts(conn, source["id"])
     pending = [
@@ -164,16 +164,28 @@ def auto_match_source(conn: sqlite3.Connection, source: sqlite3.Row) -> int:
     taken = {r[0] for r in conn.execute(
         "SELECT e.pocketcasts_episode_uuid FROM episodes e JOIN sources s ON s.id = e.source_id "
         "WHERE e.pocketcasts_episode_uuid IS NOT NULL AND s.enabled = 1")}
+    # A Fuzzy match gives way to an exact title: {Pocket Casts uuid: episode holding it}.
+    fuzzy_holders = {r[0]: r[1] for r in conn.execute(
+        "SELECT e.pocketcasts_episode_uuid, e.id FROM episodes e JOIN sources s ON s.id = e.source_id "
+        "WHERE e.match_method = 'auto_date' AND s.enabled = 1 AND s.kind = 'youtube'")} if _reclaim else {}
     if source["kind"] == "youtube":
-        matches = match_episodes_loose(pending, pocket, taken, podcast_titles=podcasts)
+        matches = match_episodes_loose(pending, pocket, taken, podcast_titles=podcasts,
+                                       reclaimable=set(fuzzy_holders))
     else:
         matches = match_episodes(pending, pocket, taken)
+    displaced = 0
     for episode_id, (uuid, method) in matches.items():
+        if uuid in fuzzy_holders:
+            _clear_match(conn, fuzzy_holders[uuid], lock=False)
+            displaced += 1
         conn.execute(
             "UPDATE episodes SET pocketcasts_episode_uuid = ?, match_method = ?, updated_at = ? WHERE id = ?",
             (uuid, method, utcnow(), episode_id),
         )
         reset_sync_marker(conn, episode_id)
+    # Videos that lost their episode get one more go, now that the exact matches are in place.
+    if displaced:
+        return len(matches) + auto_match_source(conn, source, _reclaim=False)
     return len(matches)
 
 
