@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 
 from .db import utcnow
 from .matching import (
-    LOOSE_DATE_TOLERANCE, PatreonSide, PocketSide, match_episodes, match_episodes_loose, parse_time,
+    PatreonSide, PocketSide, fuzzy_match_holds, match_episodes, match_episodes_loose,
 )
 from . import history, my_list
 from .pocketcasts import STATUS_PLAYED, STATUS_UNPLAYED, EpisodeState, PocketCastsClient
@@ -124,18 +124,20 @@ def _clear_match(conn: sqlite3.Connection, episode_id: int, lock: bool) -> None:
 
 
 def revalidate_fuzzy_matches(conn: sqlite3.Connection, source_id: int) -> int:
-    """Drop Fuzzy matches that a now-known publish date contradicts (more than the loose date
-    window apart). They were made from title + length alone, before the date was fetched.
-    Manual and exact-title matches are never touched. Returns how many were dropped."""
+    """Drop Fuzzy matches today's rules wouldn't make: lengths too far apart (a clip matched to
+    an episode), or dates too far apart for how similar the titles are. Covers matches made from
+    title + length before the date was fetched, and ones made by older rules. Manual and
+    exact-title matches are never touched. Returns how many were dropped."""
     rows = conn.execute(
-        "SELECT e.id, e.published_at, pe.published_at AS pc_published FROM episodes e "
+        "SELECT e.id, e.title, e.published_at, e.duration_secs, pe.title AS pc_title, "
+        "pe.published_at AS pc_published, pe.duration_secs AS pc_secs FROM episodes e "
         "JOIN pocketcasts_episodes pe ON pe.uuid = e.pocketcasts_episode_uuid "
         "WHERE e.source_id = ? AND e.match_method = 'auto_date' AND e.published_at IS NOT NULL",
         (source_id,)).fetchall()
     dropped = 0
     for row in rows:
-        a, b = parse_time(row["published_at"]), parse_time(row["pc_published"])
-        if a and b and abs(a - b) > LOOSE_DATE_TOLERANCE:
+        if not fuzzy_match_holds(row["title"], row["published_at"], row["duration_secs"],
+                                 row["pc_title"], row["pc_published"], row["pc_secs"]):
             _clear_match(conn, row["id"], lock=False)
             dropped += 1
     return dropped

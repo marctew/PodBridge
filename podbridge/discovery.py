@@ -203,9 +203,15 @@ def _youtube_progress(conn, source_id: int, video_id: str, percent: float, durat
                     updated_at=updated_at if position else None)
 
 
+MIN_VIDEO_SECS = 180  # Shorts and clips: never a podcast episode, so they aren't listed at all
+
+
 def _store_video(conn, source, result: DiscoveryResult, video_id: str, title: str, published_at: str | None,
                  duration: float | None, percent: float | None) -> None:
     from .youtube import watch_url
+
+    if duration is not None and duration < MIN_VIDEO_SECS:
+        return
 
     progress = (_youtube_progress(conn, source["id"], video_id, percent, duration) if percent is not None
                 else Progress(None, False, "is_not_watched", None))
@@ -218,6 +224,16 @@ def _store_video(conn, source, result: DiscoveryResult, video_id: str, title: st
             result.added += 1
         else:
             result.refreshed += 1
+
+
+def drop_short_videos(conn: sqlite3.Connection) -> int:
+    """Remove unmatched YouTube episodes found to be under MIN_VIDEO_SECS (their length may only
+    have become known after they were listed). Matched, locked and My List episodes are kept."""
+    with conn:
+        return conn.execute(
+            "DELETE FROM episodes WHERE match_method = 'none' AND match_locked = 0 AND duration_secs < ? "
+            "AND source_id IN (SELECT id FROM sources WHERE kind = 'youtube') "
+            "AND id NOT IN (SELECT episode_id FROM my_list)", (MIN_VIDEO_SECS,)).rowcount
 
 
 def missing_youtube_dates(conn: sqlite3.Connection) -> int:
@@ -321,8 +337,13 @@ def discover_youtube_all(conn: sqlite3.Connection, store: SettingsStore, client,
 
     # 3. Watched videos older than the uploads page: the watch page says which channel they're from.
     # (Playlist sources are read in full in step 1, so this only ever finds channel sources.)
-    if not any(is_channel_id(key) for key in sources):
-        return list(results.values())
+    if any(is_channel_id(key) for key in sources):
+        _discover_from_history(conn, client, sources, results, history, listed, budget)
+    drop_short_videos(conn)
+    return list(results.values())
+
+
+def _discover_from_history(conn, client, sources, results, history, listed, budget) -> None:
     for video_id, item in history.items():
         if video_id in listed:
             continue
@@ -332,4 +353,3 @@ def discover_youtube_all(conn: sqlite3.Connection, store: SettingsStore, client,
         source = sources[row["channel_id"]]
         _store_video(conn, source, results[row["channel_id"]], video_id, row["title"] or item.title,
                      row["published_at"], row["duration_secs"], item.percent)
-    return list(results.values())
