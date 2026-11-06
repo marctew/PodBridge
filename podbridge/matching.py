@@ -137,11 +137,19 @@ def title_variants(title: str) -> set[str]:
     return {title, strip_label(title)}
 
 
+MIN_CONTAINED_WORDS = 4
+MIN_CONTAINMENT = 0.8
+
+
 def _similarity(a: str, b: str) -> float:
     chars = SequenceMatcher(None, normalise_title(a), normalise_title(b)).ratio()
     wa, wb = _words(a), _words(b)
     words = 2 * len(wa & wb) / (len(wa) + len(wb)) if wa and wb else 0.0
-    return max(chars, words)
+    # A short video title inside a long podcast title ('Greg Kriek' vs 'Greg Kriek Moving to LA,
+    # Acting...') scores low on both measures above; count the share of the shorter one that's covered.
+    smaller = min(len(wa), len(wb))
+    contained = len(wa & wb) / smaller if smaller >= MIN_CONTAINED_WORDS else 0.0
+    return max(chars, words, contained if contained >= MIN_CONTAINMENT else 0.0)
 
 
 def title_similarity(a: str, b: str) -> float:
@@ -180,10 +188,13 @@ def match_episodes_loose(
        only that podcast's episodes are candidates.
     1. Exact normalised title (unique), ignoring the '| Channel Name' suffix and a short
        'Label:' prefix on either side ('Q&A:', 'Special episode:').
-    2. If the video's publish date is known: Pocket Casts episodes published within 30 hours.
-       A single one wins; several are separated by title similarity (best >= 0.45 and
-       0.15 clear of the next).
-    3. If the date isn't known yet: title similarity alone among episodes within 10% of the
+    2. If the video's publish date is known: Pocket Casts episodes published within 30 hours
+       whose length is plausible (lengths_plausible). A single one wins if its length is
+       known to be close or its title is similar (>= 0.45); several are separated by title
+       similarity (best >= 0.45 and 0.15 clear of the next).
+    3. Still nothing: a strong title match (>= 0.7, 0.2 clear of the next) within 21 days, for
+       shows that post the video days before or after the podcast.
+    4. If the date isn't known yet: title similarity alone among episodes within 10% of the
        video's length (best >= 0.45 and 0.2 clear of the next).
     Contested Pocket Casts episodes go to nobody.
     """
@@ -223,18 +234,71 @@ def match_episodes_loose(
             if match is not None:
                 date_matches[ep.episode_id] = (match.uuid, "auto_date")
             continue
-        near = [p for p in allowed(ep, remaining)
+        candidates = [p for p in allowed(ep, remaining) if lengths_plausible(ep.duration_secs, p.duration_secs)]
+        near = [p for p in candidates
                 if (t := _parse_time(p.published_at)) is not None and abs(t - when) <= LOOSE_DATE_TOLERANCE]
         if len(near) == 1:
-            date_matches[ep.episode_id] = (near[0].uuid, "auto_date")
+            if lengths_close(ep.duration_secs, near[0].duration_secs) or \
+                    title_similarity(ep.title, near[0].title) >= MIN_TITLE_SIMILARITY:
+                date_matches[ep.episode_id] = (near[0].uuid, "auto_date")
+                continue
         elif near:
-            scored = sorted(((title_similarity(ep.title, p.title), p) for p in near),
-                            key=lambda sp: sp[0], reverse=True)
-            best, runner_up = scored[0][0], scored[1][0]
-            if best >= MIN_TITLE_SIMILARITY and best - runner_up >= MIN_SIMILARITY_MARGIN:
-                date_matches[ep.episode_id] = (scored[0][1].uuid, "auto_date")
+            match = _clear_winner(ep, near, MIN_TITLE_SIMILARITY, MIN_SIMILARITY_MARGIN)
+            if match is not None:
+                date_matches[ep.episode_id] = (match.uuid, "auto_date")
+                continue
+        wide = [p for p in candidates
+                if (t := _parse_time(p.published_at)) is not None and abs(t - when) <= STRONG_DATE_TOLERANCE]
+        match = _clear_winner(ep, wide, STRONG_TITLE_SIMILARITY, NO_DATE_SIMILARITY_MARGIN)
+        if match is not None:
+            date_matches[ep.episode_id] = (match.uuid, "auto_date")
 
     return {**title_matches, **_uncontested(date_matches)}
+
+
+STRONG_DATE_TOLERANCE = timedelta(days=21)
+STRONG_TITLE_SIMILARITY = 0.7
+# A video and its podcast episode differ in length (ads, intros, cuts), but not by this much:
+# outside it, one of them is a clip or a trailer.
+LENGTH_RATIO = (0.6, 1.6)
+CLOSE_LENGTH = 0.25
+
+
+def lengths_plausible(video: float | None, podcast: float | None) -> bool:
+    """False only when both lengths are known and too far apart to be the same episode."""
+    if not video or not podcast:
+        return True
+    return LENGTH_RATIO[0] <= video / podcast <= LENGTH_RATIO[1]
+
+
+def lengths_close(video: float | None, podcast: float | None) -> bool:
+    return bool(video and podcast) and abs(video - podcast) <= CLOSE_LENGTH * podcast
+
+
+def fuzzy_match_holds(video_title: str, video_published: str | None, video_secs: float | None,
+                      podcast_title: str, podcast_published: str | None, podcast_secs: float | None) -> bool:
+    """Would an existing Fuzzy match still be made under today's rules (ignoring rivals)?
+    Used to drop matches made by older, looser rules or before the video's date was known."""
+    a, b = _parse_time(video_published), _parse_time(podcast_published)
+    if a is None or b is None:
+        return True
+    if not lengths_plausible(video_secs, podcast_secs):
+        return False
+    similarity = title_similarity(strip_channel_suffix(video_title), podcast_title)
+    gap = abs(a - b)
+    if gap <= LOOSE_DATE_TOLERANCE:
+        return lengths_close(video_secs, podcast_secs) or similarity >= MIN_TITLE_SIMILARITY
+    return gap <= STRONG_DATE_TOLERANCE and similarity >= STRONG_TITLE_SIMILARITY
+
+
+def _clear_winner(ep: PatreonSide, candidates: list[PocketSide], minimum: float, margin: float) -> PocketSide | None:
+    if not candidates:
+        return None
+    scored = sorted(((title_similarity(ep.title, p.title), p) for p in candidates),
+                    key=lambda sp: sp[0], reverse=True)
+    best = scored[0][0]
+    runner_up = scored[1][0] if len(scored) > 1 else 0.0
+    return scored[0][1] if best >= minimum and best - runner_up >= margin else None
 
 
 LENGTH_TOLERANCE = 0.10
