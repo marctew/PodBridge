@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 import json
+import re
 from pathlib import Path
 
 from PIL import Image
@@ -54,7 +55,8 @@ def test_manifest(client):
 def test_old_icon_urls_redirect_without_signing_in(client):
     for old, new in OLD.items():
         r = client.get(old)
-        assert r.status_code == 301 and r.headers["Location"].endswith(new), old
+        location = r.headers["Location"].split("?v=")[0]               # du_flask adds ?v=<mtime>
+        assert r.status_code == 301 and location.endswith(new), old
         assert client.get(r.headers["Location"]).status_code == 200, old
     assert client.get("/static/icons/nothing.png").status_code == 404
 
@@ -72,7 +74,8 @@ def test_head_tags_on_the_app_and_the_login_page(client, authed):
         assert '<meta name="apple-mobile-web-app-capable" content="yes">' in html
         assert '<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">' in html
         assert 'rel="manifest" href="/static/manifest.json?v=' in html
-        assert 'href="/static/img/icon.svg"' in html and 'href="/static/favicon.ico" sizes="32x32"' in html
+        assert 'href="/static/img/icon.svg?v=' in html and 'sizes="32x32"' in html
+        assert re.search(r'href="/static/favicon\.ico\?v=\d+" sizes="32x32"', html)
         assert "static/icons/" not in html and "webmanifest" not in html
         assert html.count('<meta name="theme-color"') == 1                  # only the one from theme_head.html
 

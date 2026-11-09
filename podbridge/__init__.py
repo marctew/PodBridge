@@ -4,12 +4,10 @@ from __future__ import annotations
 
 __version__ = "0.1.0"
 
-import hashlib
 from datetime import datetime, timedelta
-from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from flask import Flask
+from flask import Flask, request
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 from . import auth, db, scheduler, views
@@ -36,15 +34,17 @@ def create_app(config: Config | None = None) -> Flask:
     app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
     app.extensions["secret_box"] = SecretBox(config.encryption_key)
 
-    # Cache-busting: the stylesheet URL carries a hash of its contents, so browsers (Safari
-    # especially) fetch the new file after every update instead of reusing a stale copy.
-    # The design files count too: the design updater changes them without touching style.css.
-    digest = hashlib.sha1()
-    for name in ("style.css", "display.css", "design/uniform.css", "design/confirm.js"):
-        asset = Path(app.static_folder) / name
-        if asset.is_file():
-            digest.update(asset.read_bytes())
-    app.jinja_env.globals["asset_version"] = digest.hexdigest()[:10]
+    # Caching (APP-STANDARD 12): pages are no-store, static files no-cache (the browser keeps them and
+    # revalidates, so a deploy's CSS and JS show at once), and du_flask's init_design puts ?v=<mtime> on
+    # every url_for('static', ...) link. A response that sets its own caching (the events stream, API
+    # images and feeds, display pages from du_api) keeps it.
+    @app.after_request
+    def cache_headers(resp):
+        if request.endpoint == "static":
+            resp.headers["Cache-Control"] = "no-cache"
+        elif resp.mimetype == "text/html" and "Cache-Control" not in resp.headers:
+            resp.headers["Cache-Control"] = "no-store"
+        return resp
 
     zone = ZoneInfo(config.tz)
 

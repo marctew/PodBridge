@@ -1,6 +1,6 @@
 {#- PodBridge's shell, from Design Uniformity's templates/base.html: sidebar on desktop, top bar and
     bottom nav on phones. Media category, so the default violet accent. No Alpine: the phone's More
-    menu is a <details>. -#}
+    menu is the shared <details class="nav-more"> (DESIGN-SPEC 6.2). -#}
 {% from "macros/icons.html" import icon %}
 {% set nav = [
   ('main.dashboard', 'Home', 'home'),
@@ -17,8 +17,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   {% include "partials/theme_head.html" %}
   <title>{% block title %}PodBridge{% endblock %} · PodBridge</title>
-  <link rel="stylesheet" href="{{ url_for('static', filename='design/uniform.css', v=asset_version) }}">
-  <link rel="stylesheet" href="{{ url_for('static', filename='style.css', v=asset_version) }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='design/uniform.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
   <link rel="icon" href="{{ url_for('static', filename='img/icon.svg') }}" type="image/svg+xml">
   <link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}" sizes="32x32">
   {#- Home screen (Design Uniformity PWA-ICONS.md 2). theme-color comes from partials/theme_head.html. -#}
@@ -27,9 +27,9 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <link rel="manifest" href="{{ url_for('static', filename='manifest.json', v=app_version) }}">
-  <script src="{{ url_for('static', filename='design/confirm.js', v=asset_version) }}" defer></script>
-  <script src="{{ url_for('static', filename='design/sidebar.js', v=asset_version) }}" defer></script>
-  <script src="{{ url_for('static', filename='design/scroll-fade.js', v=asset_version) }}" defer></script>
+  <script src="{{ url_for('static', filename='design/confirm.js') }}" defer></script>
+  <script src="{{ url_for('static', filename='design/sidebar.js') }}" defer></script>
+  <script src="{{ url_for('static', filename='design/scroll-fade.js') }}" defer></script>
 </head>
 <body class="{{ 'signed-in' if session.auth else 'signed-out' }}">
 {% macro problem_banners() %}
@@ -55,7 +55,7 @@
     <a href="{{ url_for('main.dashboard') }}" class="brand"><img src="{{ url_for('static', filename='img/icon.svg') }}" alt=""><span>Pod<span class="brand-gradient">Bridge</span></span></a>
     <nav class="nav" aria-label="Main">
       {% for endpoint, label, glyph in nav %}
-      <a href="{{ url_for(endpoint) }}" class="nav-link {{ 'active' if request.endpoint == endpoint }}" {% if request.endpoint == endpoint %}aria-current="page"{% endif %} title="{{ label }}">{{ icon(glyph, 'icon') }}{{ label }}</a>
+      <a href="{{ url_for(endpoint) }}" class="nav-link {{ 'active' if request.endpoint == endpoint }}" {% if request.endpoint == endpoint %}aria-current="page"{% endif %} title="{{ label }}">{{ icon(glyph, 'icon h-5 w-5') }}{{ label }}</a>
       {% endfor %}
     </nav>
     {% include "partials/sidebar_toggle.html" %}
@@ -73,18 +73,22 @@
     {{ flashes() }}
     {% block content %}{% endblock %}
   </main>
+  {#- Phones: up to five entries; with more, the fifth is More, a menu of the rest (DESIGN-SPEC 6.2). -#}
+  {% set fits = nav | length <= 5 %}
   <nav class="bottom-nav" aria-label="Main">
-    {% for endpoint, label, glyph in nav[:4] %}
-    <a href="{{ url_for(endpoint) }}" class="{{ 'active' if request.endpoint == endpoint }}">{{ icon(glyph, 'icon') }}{{ label }}</a>
+    {% for endpoint, label, glyph in (nav if fits else nav[:4]) %}
+    <a href="{{ url_for(endpoint) }}" class="{{ 'active' if request.endpoint == endpoint }}" {% if request.endpoint == endpoint %}aria-current="page"{% endif %}>{{ icon(glyph, 'icon h-5 w-5') }}{{ label }}</a>
     {% endfor %}
-    {% set more = namespace(active=false) %}
-    {% for endpoint, label, glyph in nav[4:] if request.endpoint == endpoint %}{% set more.active = true %}{% endfor %}
-    <details class="menu-wrap more-menu">
-      <summary class="{{ 'active' if more.active }}">{{ icon('more', 'icon') }}More</summary>
+    {% if not fits %}{% set rest = nav[4:] %}
+    <details class="menu-wrap nav-more">
+      <summary class="{% for endpoint, label, glyph in rest if request.endpoint == endpoint %}active{% endfor %}">{{ icon('more', 'icon h-5 w-5') }}More</summary>
       <div class="menu">
-        {% for endpoint, label, glyph in nav[4:] %}<a class="menu-item" href="{{ url_for(endpoint) }}">{{ icon(glyph, 'icon-sm') }}{{ label }}</a>{% endfor %}
+        {% for endpoint, label, glyph in rest %}
+        <a href="{{ url_for(endpoint) }}" class="menu-item {{ 'active' if request.endpoint == endpoint }}" {% if request.endpoint == endpoint %}aria-current="page"{% endif %}>{{ icon(glyph, 'icon-sm') }}{{ label }}</a>
+        {% endfor %}
       </div>
     </details>
+    {% endif %}
   </nav>
 </div>
 <dialog id="open-with" aria-labelledby="open-with-title">
@@ -123,6 +127,13 @@
         });
         document.querySelectorAll('a[href^="https://www.youtube.com/"], a[href^="https://www.patreon.com/"]')
           .forEach(function (a) { a.removeAttribute("target"); });
+      }
+
+      // The phone's More menu (DESIGN-SPEC 6.2) closes on a tap outside it, or Escape.
+      var more = document.querySelector(".nav-more");
+      if (more) {
+        document.addEventListener("click", function (e) { if (more.open && !more.contains(e.target)) more.open = false; });
+        document.addEventListener("keydown", function (e) { if (e.key === "Escape") more.open = false; });
       }
 
       // Buttons with data-confirm ask first, in an inline popover (design/confirm.js, spec 7.10).
