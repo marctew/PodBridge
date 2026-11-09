@@ -120,6 +120,6 @@
 
 {% if design_status is defined %}
 <div class="design-settings">{% include "partials/design_card.html" %}</div>
-<script src="{{ url_for('static', filename='design/design-card.js', v=asset_version) }}" defer></script>
+<script src="{{ url_for('static', filename='design/design-card.js') }}" defer></script>
 {% endif %}
 {% endblock %}

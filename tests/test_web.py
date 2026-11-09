@@ -107,7 +107,7 @@ def test_settings_have_no_webhook_field(authed):
 def test_stylesheet_url_is_versioned(client):
     import re
     html = client.get("/login").get_data(as_text=True)
-    assert re.search(r'href="/static/style\.css\?v=[0-9a-f]{10}"', html)
+    assert re.search(r'href="/static/style\.css\?v=\d+"', html)  # the file's mtime (du_flask)
 
 
 def test_dashboard_renders(authed):

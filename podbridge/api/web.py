@@ -209,10 +209,9 @@ def continue_watching():
     keep = {k: request.args[k] for k in ("theme", "size", "scale", "accent") if k in request.args}
     template = ("display/continue_watching_body.html" if request.args.get("fragment") == "1"
                 else "display/continue_watching.html")
-    v = current_app.jinja_env.globals.get("asset_version")
     return render_template(template, opts=opts, page=page, title="Continue watching",
-                           stylesheets=[url_for("static", filename="design/uniform.css", v=v),
-                                        url_for("static", filename="display.css", v=v)],
+                           stylesheets=[url_for("static", filename="design/uniform.css"),  # ?v=<mtime> from du_flask
+                                        url_for("static", filename="display.css")],
                            fragment_url=_with_token(request.path, fragment=1, **keep),
                            events_url=_with_token("/api/v1/events"),
                            event_names=[events.PROGRESS_SYNCED, events.SYNC_FINISHED])
