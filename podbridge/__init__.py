@@ -37,13 +37,23 @@ def create_app(config: Config | None = None) -> Flask:
     # Caching (APP-STANDARD 12): pages are no-store, static files no-cache (the browser keeps them and
     # revalidates, so a deploy's CSS and JS show at once), and du_flask's init_design puts ?v=<mtime> on
     # every url_for('static', ...) link. A response that sets its own caching (the events stream, API
-    # images and feeds, display pages from du_api) keeps it.
+    # images and feeds, display pages from du_api) keeps its max-age but is made private.
     @app.after_request
     def cache_headers(resp):
+        # APP-STANDARD 12: static files revalidate; everything else is someone's own and never goes in a shared
+        # cache. Unmarked becomes no-store (pages, JSON, redirects, errors); what sets its own caching keeps its
+        # max-age but is made private. Through the tunnel, Cloudflare stores an unmarked answer and hands it to
+        # anyone, signed in or not (Encore, 9 Nov 2026).
         if request.endpoint == "static":
-            resp.headers["Cache-Control"] = "no-cache"
-        elif resp.mimetype == "text/html" and "Cache-Control" not in resp.headers:
-            resp.headers["Cache-Control"] = "no-store"
+            resp.headers["Cache-Control"] = "no-cache"   # revalidate, so a deploy's CSS and JS show at once
+            return resp
+        words = [w.strip() for w in resp.headers.get("Cache-Control", "").split(",")
+                 if w.strip() and w.strip().lower() != "public"]
+        if not words:
+            words = ["no-store"]
+        elif not {"private", "no-store"} & {w.lower() for w in words}:
+            words.insert(0, "private")
+        resp.headers["Cache-Control"] = ", ".join(words)
         return resp
 
     zone = ZoneInfo(config.tz)
